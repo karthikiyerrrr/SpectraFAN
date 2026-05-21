@@ -13,8 +13,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import numpy as np
 import polars as pl
-from PIL import Image  # noqa: F401 — used in load_pair (Task 3)
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
@@ -69,3 +70,31 @@ def list_pairs(root: Path, target: str = "circularMask") -> pl.DataFrame:
             "mask_bytes": pl.Int64,
         },
     )
+
+
+def load_pair(image_path: Path, mask_path: Path) -> tuple[np.ndarray, np.ndarray]:
+    """Load one (image, mask) pair as numpy arrays.
+
+    Returns
+    -------
+    image : np.ndarray, float32, single-channel, values in [0, 1]
+    mask  : np.ndarray, uint8,   single-channel, values in {0, 1}
+
+    Multi-channel inputs are collapsed to luminance. The mask is thresholded at
+    >0 so any non-zero encoding (0/255, 0/1, anti-aliased edges) reduces to
+    binary.
+    """
+    with Image.open(image_path) as im:
+        image = np.asarray(im.convert("L"))
+    with Image.open(mask_path) as im:
+        mask_raw = np.asarray(im.convert("L"))
+
+    if image.dtype == np.uint8:
+        image_f = image.astype(np.float32) / 255.0
+    elif image.dtype == np.uint16:
+        image_f = image.astype(np.float32) / 65535.0
+    else:
+        image_f = image.astype(np.float32)
+
+    mask = (mask_raw > 0).astype(np.uint8)
+    return image_f, mask
