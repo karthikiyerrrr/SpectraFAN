@@ -46,8 +46,10 @@ known-first-party = ["spectrafan"]
 
 [tool.ruff.lint.per-file-ignores]
 # marimo notebooks: trailing bare expressions are the cell's displayed output;
-# generated cell signatures inherit casing from imported names.
-"notebooks/*.py" = ["B018", "N803"]
+# generated cell signatures inherit casing from imported names; cells are
+# wrapped in functions but read as module-level so UPPER_SNAKE constants are
+# idiomatic inside them.
+"notebooks/*.py" = ["B018", "N803", "N806"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
