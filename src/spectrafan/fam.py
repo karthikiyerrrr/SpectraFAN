@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Literal
 
 import torch
-import torch.nn as nn
+from torch import nn
 
 ConvKind = Literal["depthwise", "depthwise_separable"]
 
@@ -68,22 +68,10 @@ class FAMComplex(nn.Module):
         self.branch_imag = _Branch(channels, conv_kind)
         self.final = nn.Conv2d(channels, channels, kernel_size=1, bias=True)
 
-    def _filter_in_frequency(self, x: torch.Tensor) -> torch.Tensor:
-        """FFT -> per-part branches -> reassemble -> IFFT. Returns a complex tensor.
-
-        Uses rfft2/irfft2 so the reconstructed spatial signal is guaranteed
-        real-valued; the returned complex tensor has a near-zero imaginary part
-        (floating-point noise only) that the forward pass discards via `.real`.
-
-        Exposed so tests can inspect the imaginary residue before `.real` discards it.
-        """
-        freq = torch.fft.rfft2(x)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        freq = torch.fft.fft2(x)
         r_prime = self.branch_real(freq.real)
         i_prime = self.branch_imag(freq.imag)
         freq_hat = torch.complex(r_prime, i_prime)
-        out = torch.fft.irfft2(freq_hat, s=x.shape[-2:])
-        return torch.complex(out, torch.zeros_like(out))
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x_hat = self._filter_in_frequency(x).real
-        return self.final(x + x_hat)
+        spatial_hat = torch.fft.ifft2(freq_hat).real
+        return self.final(x + spatial_hat)
