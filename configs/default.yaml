@@ -1,0 +1,27 @@
+# SpectraFAN default training config.
+# Mirrors the paper's reported settings for the baseline reproduction.
+
+model:
+  backbone: unet
+  channels: [64, 128, 256, 512]
+  fam: complex          # one of: complex | real | dct
+  prior: none           # one of: none | init | reg | pretrain
+
+data:
+  dataset: temimagenet  # one of: temimagenet | pdcu
+  image_size: 512
+  batch_size: 4
+
+optim:
+  optimizer: rmsprop
+  lr: 1.0e-5
+  decay: 0.99
+  weight_decay: 1.0e-8
+  momentum: 0.999
+
+train:
+  epochs: 200
+  loss:
+    ce_weight: 0.5
+    dice_weight: 0.5
+  seed: 0

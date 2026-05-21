@@ -1,0 +1,31 @@
+# Claude
+CLAUDE.md
+.claude/
+docs/superpowers/
+.superpowers/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# marimo per-notebook session cache
+__marimo__/
+
+# Data & checkpoints (never commit)
+data/raw/
+data/processed/
+data/cache/
+checkpoints/
+runs/
+*.pt
+*.pth
+*.ckpt
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
