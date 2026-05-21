@@ -4,8 +4,10 @@
 model:
   backbone: unet
   channels: [64, 128, 256, 512]
-  fam: complex          # one of: complex | real | dct
-  prior: none           # one of: none | init | reg | pretrain
+  bottleneck: 1024                # standard U-Net bottleneck (depth-4 encoder + 1 bottleneck stage)
+  fam: complex                    # one of: complex | real | dct (Phase 1 variants land later)
+  fam_conv_kind: depthwise        # one of: depthwise | depthwise_separable; locked by params calibration vs Liu et al. 2026 Table 1
+  prior: none                     # one of: none | init | reg | pretrain
 
 data:
   dataset: temimagenet  # one of: temimagenet | pdcu
