@@ -15,3 +15,24 @@ keywords:
   - electron microscopy
   - crystallography
   - FANet
+references:
+  - type: article
+    authors:
+      - family-names: Liu
+        given-names: Shuhui
+      - family-names: Liu
+        given-names: Xinlong
+      - family-names: Liu
+        given-names: Xiaowei
+      - family-names: Zeng
+        given-names: Chaobin
+      - family-names: Liu
+        given-names: Wei
+    title: "Frequency domain attention network for S/TEM image segmentation"
+    journal: "Materials Today Nano"
+    volume: 33
+    start: 100772
+    year: 2026
+    issn: "2588-8420"
+    doi: 10.1016/j.mtnano.2026.100772
+    url: "https://www.sciencedirect.com/science/article/pii/S2588842026000210"
