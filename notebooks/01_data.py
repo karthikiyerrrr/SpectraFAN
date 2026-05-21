@@ -95,24 +95,12 @@ def _(mo):
 
 
 @app.cell
-def _(image, np, px, stem):
+def _(image, mo, np, px, stem):
     spectrum = np.log1p(np.abs(np.fft.fftshift(np.fft.fft2(image))))
 
-    title_fft = f"stem={stem}  |  image  vs.  log(1 + |FFT|)"
-
-    fig_fft = px.imshow(
-        np.stack([image, spectrum], axis=0),
-        facet_col=0,
-        facet_col_wrap=2,
-        color_continuous_scale="gray",
-        title=title_fft,
-    )
-    fig_fft.for_each_annotation(
-        lambda a: a.update(
-            text={"facet_col=0": "image", "facet_col=1": "log |FFT|"}.get(a.text, a.text)
-        )
-    )
-    fig_fft
+    fig_img = px.imshow(image, color_continuous_scale="gray", title=f"image  ({stem})")
+    fig_spec = px.imshow(spectrum, color_continuous_scale="gray", title="log(1 + |FFT|)")
+    mo.hstack([fig_img, fig_spec], justify="start", widths="equal")
     return
 
 
