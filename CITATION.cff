@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below, and cite the FANet paper it builds on."
+title: SpectraFAN
+abstract: "Frequency-domain attention for crystallographic image segmentation. A two-phase research project on top of FANet: (1) make the Frequency Attention Module materially faster at inference and in training with no accuracy loss, via a real-input FFT, kernel fusion and CUDA-graph capture, and a real-valued DCT-domain variant; (2) inject crystallographic frequency priors derived from lattice symmetry to improve data efficiency and sim-to-real transfer."
+type: software
+authors:
+  - family-names: Iyer
+    given-names: Karthik
+repository-code: "https://github.com/karthikiyerrrr/SpectraFAN"
+license: MIT
+version: 0.0.1
+keywords:
+  - frequency-domain attention
+  - image segmentation
+  - electron microscopy
+  - crystallography
+  - FANet
