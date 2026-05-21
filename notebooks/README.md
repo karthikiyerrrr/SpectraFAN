@@ -20,9 +20,11 @@ Planned notebook order tracks the project plan:
 
 | # | Notebook | Purpose |
 |---|----------|---------|
-| 01 | `repro_baseline.py` | Reproduce FANet Table 1 on the public crystal dataset |
-| 02 | `profile_fam.py`    | Per-op profiling — settle transform-bound vs. FLOP-bound |
-| 03 | `rfft_fam.py`       | Step A: rfft FAM + boundary-handling numerical equivalence |
-| 04 | `fused_fam.py`      | Step B: torch.compile + CUDA-graph latency deltas |
-| 05 | `dct_fam.py`        | Step C: real-valued DCT FAM, accuracy vs. baseline |
-| 06 | `frequency_prior.py`| Phase 2: data-efficiency sweeps with the crystallographic prior |
+| 01 | `01_data.py`        | TEMImageNet inventory, paired image/mask viewer, and log-magnitude FFT view |
+| 02 | `02_model.py`       | FANet (FAMComplex + U-Net) recreation, calibrated to Table 1 |
+| 03 | `03_repro_baseline.py` | Reproduce FANet Table 1 on the public crystal dataset |
+| 04 | `04_profile_fam.py`    | Per-op profiling — settle transform-bound vs. FLOP-bound |
+| 05 | `05_rfft_fam.py`       | Step A: rfft FAM + boundary-handling numerical equivalence |
+| 06 | `06_fused_fam.py`      | Step B: torch.compile + CUDA-graph latency deltas |
+| 07 | `07_dct_fam.py`        | Step C: real-valued DCT FAM, accuracy vs. baseline |
+| 08 | `08_frequency_prior.py`| Phase 2: data-efficiency sweeps with the crystallographic prior |
