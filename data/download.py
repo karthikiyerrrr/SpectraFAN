@@ -11,6 +11,7 @@ Run with:
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -55,6 +56,7 @@ def main(dest: Path = DEFAULT_DEST) -> None:
     subprocess.run(
         ["git", "clone", "--depth", "1", REPO_URL, str(dest)],
         check=True,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
     )
     logger.info("done")
 
