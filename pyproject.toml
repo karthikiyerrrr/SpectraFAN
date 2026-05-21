@@ -22,6 +22,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "fvcore>=0.1.5.post20221221",
     "pytest>=8.0",
     "ruff>=0.6",
 ]
