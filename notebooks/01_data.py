@@ -85,12 +85,12 @@ def _(Path, df, load_pair, np, px, sample_idx):
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        "Crystal lattices have **sparse** frequency spectra. The bright spots in "
+    mo.md("""
+    Crystal lattices have **sparse** frequency spectra. The bright spots in "
         "`log |FFT|` are the lattice periodicities; almost all the signal lives in "
         "a few discrete locations set by the crystal's reciprocal vectors. This is "
-        "the structural prior we'll inject in Phase 2."
-    )
+        "the structural prior we'll inject in Phase 2.
+    """)
     return
 
 
