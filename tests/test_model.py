@@ -27,7 +27,7 @@ def test_fam_shape_roundtrip(conv_kind: ConvKind) -> None:
 
 
 def test_fanet_shape() -> None:
-    """FANet maps (B, 3, 512, 512) to (B, 1, 512, 512) with values in [0, 1]."""
+    """FANet maps (B, 3, 512, 512) to (B, 1, 512, 512) with outputs spanning (0, 1)."""
     torch.manual_seed(0)
     model = FANet()
     model.eval()
@@ -38,6 +38,11 @@ def test_fanet_shape() -> None:
     assert y.dtype == x.dtype
     assert torch.isfinite(y).all()
     assert (y >= 0).all() and (y <= 1).all()
+    # Catches the paper's Conv->BN->ReLU->Sigmoid OutputConv, which clamps y to [0.5, 1.0].
+    assert y.min().item() < 0.5, (
+        "OutputConv must let the sigmoid produce values below 0.5; "
+        f"got y.min()={y.min().item():.4f}. Did a ReLU sneak back in before Sigmoid?"
+    )
 
 
 # Paper Table 1, FANet row.
