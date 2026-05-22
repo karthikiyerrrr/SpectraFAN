@@ -92,6 +92,8 @@ def test_fit_one_epoch_decreases_loss(tmp_path: Path, monkeypatch: pytest.Monkey
 
 
 def _latest_run_dir(root: Path) -> Path:
+    if not root.is_dir():
+        pytest.skip(f"{root} does not exist; execute the smoke trial first")
     runs = sorted(root.glob("*"), key=lambda p: p.stat().st_mtime)
     if not runs:
         pytest.skip(f"no runs in {root}; execute the smoke trial first")

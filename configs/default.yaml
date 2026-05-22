@@ -4,9 +4,9 @@
 model:
   backbone: unet
   channels: [64, 128, 256, 512]
-  bottleneck: 1024
+  bottleneck: 1024                # standard U-Net bottleneck (depth-4 encoder + 1 bottleneck stage)
   fam: complex
-  fam_conv_kind: depthwise
+  fam_conv_kind: depthwise        # one of: depthwise | depthwise_separable; locked by params calibration vs Liu et al. 2026 Table 1
   prior: none
 
 data:
