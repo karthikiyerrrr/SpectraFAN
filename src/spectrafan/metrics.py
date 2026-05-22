@@ -25,7 +25,7 @@ def iou(prob: Tensor, target: Tensor, threshold: float = 0.5) -> Tensor:
     inter = (pred * target).sum()
     union = pred.sum() + target.sum() - inter
     if union.item() == 0.0:
-        return torch.tensor(1.0)
+        return torch.tensor(1.0, device=prob.device)
     return inter / union
 
 
@@ -35,7 +35,7 @@ def dice(prob: Tensor, target: Tensor, threshold: float = 0.5) -> Tensor:
     num = 2.0 * (pred * target).sum()
     den = pred.sum() + target.sum()
     if den.item() == 0.0:
-        return torch.tensor(1.0)
+        return torch.tensor(1.0, device=prob.device)
     return num / den
 
 
@@ -61,6 +61,7 @@ class RunningMetrics:
 
     def update(self, logits: Tensor, target: Tensor) -> None:
         prob = torch.sigmoid(logits.detach())
+        target = target.detach()
         pred = _binarize(prob, self.threshold)
         inter = (pred * target).sum().item()
         self._inter += inter
