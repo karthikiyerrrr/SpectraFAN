@@ -21,7 +21,6 @@ def _():
 
     RUNS_DIR = Path("runs")
     DEVICE = "cpu"
-
     return (
         DEVICE,
         FANet,
@@ -49,22 +48,34 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _(RUNS_DIR, mo):
-    run_dirs = sorted(
-        (p for p in RUNS_DIR.iterdir() if p.is_dir()),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
+    if RUNS_DIR.exists():
+        run_dirs = sorted(
+            (p for p in RUNS_DIR.iterdir() if p.is_dir()),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+    else:
+        run_dirs = []
+
     run_picker = mo.ui.dropdown(
         options={p.name: p for p in run_dirs},
         value=run_dirs[0].name if run_dirs else None,
         label="Run",
     )
-    run_picker
-    return (run_picker,)
+    (
+        run_picker
+        if run_dirs
+        else mo.md(
+            "**No runs found in `runs/`.** "
+            "Run `uv run python -m spectrafan.train --config configs/smoke.yaml` first."
+        )
+    )
+    return run_dirs, run_picker
 
 
 @app.cell(hide_code=True)
-def _(run_picker):
+def _(mo, run_dirs, run_picker):
+    mo.stop(not run_dirs, mo.md("_Waiting for a run to be available._"))
     run_dir = run_picker.value
     run_dir
     return (run_dir,)
