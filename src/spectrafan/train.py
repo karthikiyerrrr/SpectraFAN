@@ -145,8 +145,8 @@ def _dict_to_run_config(d: dict) -> RunConfig:
         root=Path(data_raw.get("root", DataConfig.root)),
         image_size=data_raw.get("image_size", DataConfig.image_size),
         batch_size=data_raw.get("batch_size", DataConfig.batch_size),
-        subset_size=data_raw.get("subset_size"),
-        val_subset_size=data_raw.get("val_subset_size"),
+        subset_size=data_raw.get("subset_size", None),
+        val_subset_size=data_raw.get("val_subset_size", None),
         splits_dir=Path(data_raw.get("splits_dir", DataConfig.splits_dir)),
         num_workers=data_raw.get("num_workers", DataConfig.num_workers),
     )
@@ -408,13 +408,14 @@ def fit(cfg: RunConfig, config_stem: str = "run") -> Path:
 
     for epoch in range(cfg.train.epochs):
         t0 = time.perf_counter()
+        lr_this_epoch = optimizer.param_groups[0]["lr"]
         train_stats = train_one_epoch(model, train_loader, loss_fn, optimizer, device)
         val_stats = validate(model, val_loader, loss_fn, device)
         scheduler.step()
 
         row = {
             "epoch": epoch,
-            "lr": optimizer.param_groups[0]["lr"],
+            "lr": lr_this_epoch,
             "wall_sec": time.perf_counter() - t0,
             "train_loss": train_stats["loss"],
             "train_iou": train_stats["iou"],
