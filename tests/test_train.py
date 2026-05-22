@@ -143,3 +143,11 @@ def test_smoke_trial_acceptance() -> None:
     # Round-trip the checkpoint to make sure it's loadable.
     ckpt = torch.load(run_dir / "best.pt", map_location="cpu", weights_only=False)
     assert "model_state_dict" in ckpt
+
+
+def test_set_global_seed_enables_determinism() -> None:
+    """set_global_seed turns on torch.use_deterministic_algorithms (warn_only)."""
+    from spectrafan.train import set_global_seed
+
+    set_global_seed(0)
+    assert torch.are_deterministic_algorithms_enabled()

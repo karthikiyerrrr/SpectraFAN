@@ -213,6 +213,9 @@ def set_global_seed(seed: int) -> None:
     # Best-effort; not fully deterministic on MPS.
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+    # warn_only=True so ops without deterministic kernels (e.g. some interpolations)
+    # don't crash training; the warning still surfaces the nondeterminism.
+    torch.use_deterministic_algorithms(True, warn_only=True)
 
 
 def make_run_dir(cfg: RunConfig, config_stem: str = "run") -> Path:
