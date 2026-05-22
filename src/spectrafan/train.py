@@ -570,6 +570,13 @@ def fit(cfg: RunConfig, config_stem: str = "run", resume_from: Path | None = Non
             "val_px_acc": val_stats["px_acc"],
         }
         writer.append(row)
+        print(
+            f"epoch {epoch + 1:>3d}/{cfg.train.epochs}  "
+            f"train_iou={train_stats['iou']:.4f}  val_iou={val_stats['iou']:.4f}  "
+            f"loss={train_stats['loss']:.4f}/{val_stats['loss']:.4f}  "
+            f"lr={lr_this_epoch:.2e}  wall={row['wall_sec']:.1f}s",
+            flush=True,
+        )
         _save_checkpoint(
             run_dir / "last.pt", model, optimizer, scheduler, epoch, val_stats["iou"], cfg
         )
