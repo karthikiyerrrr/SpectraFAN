@@ -401,6 +401,9 @@ def fit(cfg: RunConfig, config_stem: str = "run") -> Path:
         weight_decay=cfg.optim.weight_decay,
         momentum=cfg.optim.momentum,
     )
+    # Liu et al. 2026 Table on §3.2 lists "LR decay rate 0.99" — interpreted here as
+    # ExponentialLR γ=0.99 per epoch. RMSprop's smoothing constant `alpha` is not
+    # specified by the paper and is left at PyTorch's default (0.99 — coincidentally).
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=cfg.optim.decay)
 
     writer = MetricsParquetWriter(run_dir / "metrics.parquet")
