@@ -1,22 +1,25 @@
 """Dataset loaders for TEMImageNet v1.3 (public crystal STEM library).
 
-Two stateless helpers:
+Three stateless helpers and a torch Dataset:
 - list_pairs: enumerate matched (image, mask) PNG pairs under a dataset root.
 - load_pair: load one pair as numpy arrays in canonical dtypes/ranges.
-
-No torch.utils.data.Dataset here yet; training-time wiring lives with the
-baseline-reproduction notebook.
+- build_split / load_split: deterministic train/val/test splitting by stem.
+- TEMImageNetDataset: torch Dataset wrapping the above for training loops.
 """
 
 from __future__ import annotations
 
 import logging
 import random
+from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
 
 import numpy as np
 import polars as pl
+import torch
 from PIL import Image
+from torch.utils.data import Dataset
 
 logger = logging.getLogger(__name__)
 
@@ -134,3 +137,98 @@ def load_split(splits_dir: Path, name: str) -> list[str]:
         raise FileNotFoundError(f"missing split file: {path}")
     with path.open() as f:
         return [line.strip() for line in f if line.strip()]
+
+
+# ---------------------------------------------------------------------------
+# Type aliases
+# ---------------------------------------------------------------------------
+
+Split = Literal["train", "val", "test"]
+Transform = Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, torch.Tensor]]
+
+
+# ---------------------------------------------------------------------------
+# Internal crop/resize helpers
+# ---------------------------------------------------------------------------
+
+
+def _center_crop_or_resize(arr: np.ndarray, size: int) -> np.ndarray:
+    """Center-crop a 2D array to ``size x size``. Resize up (bilinear) if smaller."""
+    h, w = arr.shape
+    if h >= size and w >= size:
+        top = (h - size) // 2
+        left = (w - size) // 2
+        return arr[top : top + size, left : left + size]
+    return np.asarray(Image.fromarray(arr).resize((size, size), Image.BILINEAR))
+
+
+def _center_crop_or_resize_mask(arr: np.ndarray, size: int) -> np.ndarray:
+    """Center-crop a 2D array to ``size x size``. Resize up (nearest) if smaller."""
+    h, w = arr.shape
+    if h >= size and w >= size:
+        top = (h - size) // 2
+        left = (w - size) // 2
+        return arr[top : top + size, left : left + size]
+    return np.asarray(Image.fromarray(arr).resize((size, size), Image.NEAREST))
+
+
+# ---------------------------------------------------------------------------
+# Dataset
+# ---------------------------------------------------------------------------
+
+
+class TEMImageNetDataset(Dataset):
+    """Torch Dataset over matched (image, mask) pairs in a committed split.
+
+    Returns
+    -------
+    image : torch.Tensor, float32, shape (3, image_size, image_size), values in [0, 1].
+            Grayscale source replicated to 3 channels for the FANet RGB stem.
+    mask  : torch.Tensor, float32, shape (1, image_size, image_size), values in {0.0, 1.0}.
+    """
+
+    def __init__(
+        self,
+        root: Path,
+        split: Split,
+        image_size: int,
+        splits_dir: Path = Path("data/splits/temimagenet_v1"),
+        transforms: Transform | None = None,
+        subset_size: int | None = None,
+    ) -> None:
+        super().__init__()
+        self.root = Path(root)
+        self.split = split
+        self.image_size = image_size
+        self.transforms = transforms
+
+        stems = load_split(Path(splits_dir), split)
+        if subset_size is not None:
+            stems = stems[:subset_size]
+
+        df = list_pairs(self.root)
+        index = {row["stem"]: row for row in df.iter_rows(named=True)}
+        missing = [s for s in stems if s not in index]
+        if missing:
+            raise ValueError(
+                f"{len(missing)} split stems are missing from {self.root}; first few: {missing[:5]}"
+            )
+        self._rows = [index[s] for s in stems]
+
+    def __len__(self) -> int:
+        return len(self._rows)
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
+        row = self._rows[idx]
+        image_np, mask_np = load_pair(Path(row["image_path"]), Path(row["mask_path"]))
+        image_np = _center_crop_or_resize(image_np, self.image_size)
+        mask_np = _center_crop_or_resize_mask(mask_np, self.image_size)
+
+        # image_np is float32 in [0, 1]; replicate to 3 channels for FANet's RGB stem.
+        image = torch.from_numpy(image_np).float().unsqueeze(0).repeat(3, 1, 1)  # (3, H, W)
+        # mask_np is uint8 in {0, 1}; cast to float32 for BCE loss.
+        mask = torch.from_numpy(mask_np).float().unsqueeze(0)  # (1, H, W)
+
+        if self.transforms is not None:
+            image, mask = self.transforms(image, mask)
+        return image, mask

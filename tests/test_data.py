@@ -6,9 +6,10 @@ import logging
 from pathlib import Path
 
 import numpy as np
+import torch
 from PIL import Image
 
-from spectrafan.data import build_split, list_pairs, load_pair, load_split
+from spectrafan.data import TEMImageNetDataset, build_split, list_pairs, load_pair, load_split
 
 
 def _write_png(path: Path, size: tuple[int, int] = (8, 8)) -> None:
@@ -95,3 +96,66 @@ def test_load_split_reads_stems(tmp_path: Path) -> None:
     splits_dir.mkdir()
     (splits_dir / "train.txt").write_text("00001\n00002\n00003\n")
     assert load_split(splits_dir, "train") == ["00001", "00002", "00003"]
+
+
+def test_dataset_returns_correct_shapes(tmp_path: Path) -> None:
+    """Dataset returns (3, S, S) float image and (1, S, S) {0,1}-valued float mask."""
+    # Fixture: dataset root with image/ and circularMask/ subdirs and a split file.
+    root = tmp_path / "dataset"
+    (root / "image").mkdir(parents=True)
+    (root / "circularMask").mkdir(parents=True)
+    splits_dir = tmp_path / "splits"
+    splits_dir.mkdir()
+
+    stems = [f"{i:05d}" for i in range(5)]
+    for stem in stems:
+        Image.new("L", (64, 64), color=128).save(root / "image" / f"{stem}.png")
+        # Mask with a non-trivial pattern so binarization is exercised.
+        mask = Image.new("L", (64, 64), color=0)
+        for x in range(32):
+            for y in range(32):
+                mask.putpixel((x, y), 255)
+        mask.save(root / "circularMask" / f"{stem}.png")
+    (splits_dir / "train.txt").write_text("\n".join(stems) + "\n")
+
+    ds = TEMImageNetDataset(
+        root=root,
+        split="train",
+        image_size=32,  # center-crop from 64
+        splits_dir=splits_dir,
+    )
+
+    assert len(ds) == 5
+    image, mask = ds[0]
+    assert isinstance(image, torch.Tensor)
+    assert isinstance(mask, torch.Tensor)
+    assert image.shape == (3, 32, 32)
+    assert image.dtype == torch.float32
+    assert 0.0 <= image.min().item() and image.max().item() <= 1.0
+    assert mask.shape == (1, 32, 32)
+    assert mask.dtype == torch.float32
+    assert set(torch.unique(mask).tolist()) <= {0.0, 1.0}
+
+
+def test_dataset_subset_size_truncates(tmp_path: Path) -> None:
+    """``subset_size`` truncates the stem list to the first N entries."""
+    root = tmp_path / "dataset"
+    (root / "image").mkdir(parents=True)
+    (root / "circularMask").mkdir(parents=True)
+    splits_dir = tmp_path / "splits"
+    splits_dir.mkdir()
+
+    stems = [f"{i:05d}" for i in range(10)]
+    for stem in stems:
+        Image.new("L", (32, 32), color=128).save(root / "image" / f"{stem}.png")
+        Image.new("L", (32, 32), color=255).save(root / "circularMask" / f"{stem}.png")
+    (splits_dir / "train.txt").write_text("\n".join(stems) + "\n")
+
+    ds = TEMImageNetDataset(
+        root=root,
+        split="train",
+        image_size=32,
+        splits_dir=splits_dir,
+        subset_size=3,
+    )
+    assert len(ds) == 3
