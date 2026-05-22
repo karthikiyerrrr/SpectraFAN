@@ -30,6 +30,8 @@ def train_transforms(
     Magnitudes are the project defaults; the paper specifies the menu but not
     the magnitudes (recorded in the spec).
     """
+    if noise_sigma < 0.0:
+        raise ValueError(f"noise_sigma must be >= 0, got {noise_sigma}")
     geom = v2.Compose(
         [
             v2.RandomHorizontalFlip(p=p_flip),
