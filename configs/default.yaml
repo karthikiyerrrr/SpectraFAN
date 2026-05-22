@@ -2,17 +2,25 @@
 # Mirrors the paper's reported settings for the baseline reproduction.
 
 model:
-  backbone: unet
   channels: [64, 128, 256, 512]
   bottleneck: 1024                # standard U-Net bottleneck (depth-4 encoder + 1 bottleneck stage)
-  fam: complex                    # one of: complex | real | dct (Phase 1 variants land later)
   fam_conv_kind: depthwise        # one of: depthwise | depthwise_separable; locked by params calibration vs Liu et al. 2026 Table 1
-  prior: none                     # one of: none | init | reg | pretrain
 
 data:
-  dataset: temimagenet  # one of: temimagenet | pdcu
+  dataset: temimagenet
+  root: data/raw/temimagenet
   image_size: 512
   batch_size: 4
+  subset_size: null            # null = full split
+  val_subset_size: null
+  splits_dir: data/splits/temimagenet_v1
+  num_workers: 2
+
+aug:
+  p_flip: 0.5                  # applies independently to horizontal and vertical flip
+  max_rot_deg: 15
+  zoom_range: [0.9, 1.1]
+  noise_sigma: 0.01
 
 optim:
   optimizer: rmsprop
@@ -23,7 +31,9 @@ optim:
 
 train:
   epochs: 200
+  seed: 0
+  device: auto                 # auto | cuda | mps | cpu
+  run_root: runs
   loss:
     ce_weight: 0.5
     dice_weight: 0.5
-  seed: 0

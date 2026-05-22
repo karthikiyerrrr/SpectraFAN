@@ -65,23 +65,25 @@ class DecoderModule(nn.Module):
 
 
 class OutputConv(nn.Module):
-    """Conv 1x1 -> BN -> Sigmoid. Maps backbone features to a [0,1] mask.
+    """Conv 1x1 -> BN. Returns logits; callers apply sigmoid externally for probabilities.
 
     Note: deviates from the paper's Fig. 2(e), which draws this block as
     Conv -> BN -> ReLU -> Sigmoid. The ReLU before Sigmoid would clamp the
     output to [0.5, 1.0] (sigmoid of any non-negative number is >= 0.5),
-    making confident background predictions impossible. We drop the ReLU
-    so the sigmoid spans (0, 1). See docs/superpowers/notes/03_architecture_deviations.md.
+    making confident background predictions impossible. The Sigmoid is also
+    dropped from the module so that the training loop can use
+    BCEWithLogitsLoss for numerical stability; downstream code applies
+    ``torch.sigmoid`` explicitly when probabilities are needed (e.g. metrics,
+    visualization). See docs/superpowers/notes/03_architecture_deviations.md.
     """
 
     def __init__(self, in_channels: int, out_channels: int = 1) -> None:
         super().__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
         self.bn = nn.BatchNorm2d(out_channels)
-        self.sigmoid = nn.Sigmoid()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.sigmoid(self.bn(self.conv(x)))
+        return self.bn(self.conv(x))
 
 
 class FANet(nn.Module):

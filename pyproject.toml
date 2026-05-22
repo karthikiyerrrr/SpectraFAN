@@ -54,4 +54,7 @@ known-first-party = ["spectrafan"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+addopts = "-ra -m 'not slow'"
+markers = [
+    "slow: marks tests that require the real dataset and a finished training run (deselect with -m 'not slow')",
+]
