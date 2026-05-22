@@ -1,0 +1,6 @@
+extends: default.yaml
+
+train:
+  epochs: 50
+  amp: true
+  checkpoint_every: 10

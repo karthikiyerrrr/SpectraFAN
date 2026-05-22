@@ -198,6 +198,24 @@ def test_set_global_seed_enables_determinism() -> None:
     assert torch.are_deterministic_algorithms_enabled()
 
 
+def test_full_repro_config_loads() -> None:
+    """configs/full_repro.yaml loads cleanly and carries the locked recipe values."""
+    from spectrafan.train import load_config
+
+    cfg = load_config(Path("configs/full_repro.yaml"))
+    assert cfg.train.epochs == 50
+    assert cfg.train.amp is True
+    assert cfg.train.checkpoint_every == 10
+    # Inherited from default.yaml
+    assert cfg.data.image_size == 256
+    assert cfg.data.batch_size == 4
+    assert cfg.optim.lr == 1.0e-5
+    assert cfg.optim.decay == 0.99
+    assert cfg.model.fam_conv_kind == "depthwise"
+    assert cfg.model.bottleneck == 1024
+    assert cfg.model.output_norm == "bn"
+
+
 def test_resume_continues_training(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """fit two epochs, then resume from last.pt for two more; metrics.parquet has 4 rows total."""
     ds = _SyntheticPairs()
