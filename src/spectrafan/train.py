@@ -342,6 +342,7 @@ def train_one_epoch(
         with _autocast_ctx(amp_enabled, device):
             logits = model(image)
             loss = loss_fn(logits, mask)
+        logits = logits.float()
         loss.backward()
         optimizer.step()
         loss_sum += loss.item()
@@ -369,6 +370,7 @@ def validate(
             with _autocast_ctx(amp_enabled, device):
                 logits = model(image)
                 loss = loss_fn(logits, mask)
+            logits = logits.float()
             loss_sum += loss.item()
             n_batches += 1
             rm.update(logits, mask)
