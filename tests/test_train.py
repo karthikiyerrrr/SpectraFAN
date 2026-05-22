@@ -91,6 +91,24 @@ def test_fit_one_epoch_decreases_loss(tmp_path: Path, monkeypatch: pytest.Monkey
     assert (run_dir / "config.yaml").is_file()
 
 
+def test_fit_with_amp_completes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """fit() with amp=True runs end-to-end on CPU (autocast is a no-op there) and produces finite metrics."""
+    ds = _SyntheticPairs()
+    import spectrafan.train as train_mod
+
+    monkeypatch.setattr(train_mod, "build_datasets", lambda _cfg: (ds, ds))
+
+    cfg = _tiny_cfg(tmp_path)
+    cfg.train.amp = True
+    run_dir = fit(cfg)
+
+    df = pl.read_parquet(run_dir / "metrics.parquet")
+    assert df.height == cfg.train.epochs
+    for col in ("train_loss", "val_loss", "train_iou", "val_iou"):
+        values = df[col].to_list()
+        assert all(v == v for v in values), f"{col} has NaN: {values}"
+
+
 def _latest_run_dir(root: Path) -> Path:
     if not root.is_dir():
         pytest.skip(f"{root} does not exist; execute the smoke trial first")

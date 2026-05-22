@@ -12,6 +12,7 @@ CLI:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -80,6 +81,8 @@ class TrainConfig:
     run_root: Path = Path("runs")
     loss_ce_weight: float = 0.5
     loss_dice_weight: float = 0.5
+    amp: bool = False
+    checkpoint_every: int = 10
 
 
 @dataclass
@@ -176,6 +179,8 @@ def _dict_to_run_config(d: dict) -> RunConfig:
         run_root=Path(train_raw.get("run_root", TrainConfig.run_root)),
         loss_ce_weight=loss_raw.get("ce_weight", TrainConfig.loss_ce_weight),
         loss_dice_weight=loss_raw.get("dice_weight", TrainConfig.loss_dice_weight),
+        amp=train_raw.get("amp", TrainConfig.amp),
+        checkpoint_every=train_raw.get("checkpoint_every", TrainConfig.checkpoint_every),
     )
     return RunConfig(model=model, data=data, aug=aug, optim=optim_cfg, train=train_cfg)
 
@@ -307,12 +312,24 @@ class MetricsParquetWriter:
 # ---------------------------------------------------------------------------
 
 
+def _autocast_ctx(amp_enabled: bool, device: torch.device) -> contextlib.AbstractContextManager:
+    """Return a bf16 autocast context for CUDA when AMP is on; no-op otherwise.
+
+    bf16 has the same exponent range as fp32, so no GradScaler is needed.
+    On MPS/CPU autocast is skipped — the device-portable recipe stays fp32 there.
+    """
+    if amp_enabled and device.type == "cuda":
+        return torch.autocast(device_type="cuda", dtype=torch.bfloat16)
+    return contextlib.nullcontext()
+
+
 def train_one_epoch(
     model: torch.nn.Module,
     loader: DataLoader,
     loss_fn: torch.nn.Module,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
+    amp_enabled: bool = False,
 ) -> dict[str, float]:
     model.train()
     rm = RunningMetrics()
@@ -322,8 +339,9 @@ def train_one_epoch(
         image = image.to(device, non_blocking=True)
         mask = mask.to(device, non_blocking=True)
         optimizer.zero_grad(set_to_none=True)
-        logits = model(image)
-        loss = loss_fn(logits, mask)
+        with _autocast_ctx(amp_enabled, device):
+            logits = model(image)
+            loss = loss_fn(logits, mask)
         loss.backward()
         optimizer.step()
         loss_sum += loss.item()
@@ -338,6 +356,7 @@ def validate(
     loader: DataLoader,
     loss_fn: torch.nn.Module,
     device: torch.device,
+    amp_enabled: bool = False,
 ) -> dict[str, float]:
     model.eval()
     rm = RunningMetrics()
@@ -347,8 +366,9 @@ def validate(
         for image, mask in loader:
             image = image.to(device, non_blocking=True)
             mask = mask.to(device, non_blocking=True)
-            logits = model(image)  # FANet returns logits in all modes (sigmoid is external).
-            loss = loss_fn(logits, mask)
+            with _autocast_ctx(amp_enabled, device):
+                logits = model(image)
+                loss = loss_fn(logits, mask)
             loss_sum += loss.item()
             n_batches += 1
             rm.update(logits, mask)
@@ -418,8 +438,12 @@ def fit(cfg: RunConfig, config_stem: str = "run") -> Path:
     for epoch in range(cfg.train.epochs):
         t0 = time.perf_counter()
         lr_this_epoch = optimizer.param_groups[0]["lr"]
-        train_stats = train_one_epoch(model, train_loader, loss_fn, optimizer, device)
-        val_stats = validate(model, val_loader, loss_fn, device)
+        train_stats = train_one_epoch(
+            model, train_loader, loss_fn, optimizer, device, amp_enabled=cfg.train.amp,
+        )
+        val_stats = validate(
+            model, val_loader, loss_fn, device, amp_enabled=cfg.train.amp,
+        )
         scheduler.step()
 
         row = {
