@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import os
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -213,6 +214,10 @@ def set_global_seed(seed: int) -> None:
     # Best-effort; not fully deterministic on MPS.
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
+    # CUBLAS_WORKSPACE_CONFIG is required by torch.use_deterministic_algorithms on CUDA;
+    # without it, cuBLAS matmul ops raise RuntimeError that warn_only does NOT silence.
+    # setdefault respects any pre-existing override from the user's shell.
+    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
     # warn_only=True so ops without deterministic kernels (e.g. some interpolations)
     # don't crash training; the warning still surfaces the nondeterminism.
     torch.use_deterministic_algorithms(True, warn_only=True)
