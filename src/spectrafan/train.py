@@ -24,6 +24,7 @@ import yaml
 from torch.utils.data import DataLoader, Dataset
 
 from spectrafan.data import TEMImageNetDataset
+from spectrafan.fam import ConvKind
 from spectrafan.losses import BCEDiceLoss
 from spectrafan.metrics import RunningMetrics
 from spectrafan.transforms import eval_transforms, train_transforms
@@ -38,7 +39,7 @@ from spectrafan.unet import FANet
 class ModelConfig:
     channels: tuple[int, ...] = (64, 128, 256, 512)
     bottleneck: int = 1024
-    fam_conv_kind: str = "depthwise"
+    fam_conv_kind: ConvKind = "depthwise"
 
 
 @dataclass

@@ -73,7 +73,7 @@ def test_fit_one_epoch_decreases_loss(tmp_path: Path, monkeypatch: pytest.Monkey
     # Inject our synthetic dataset by monkey-patching the dataset factory.
     import spectrafan.train as train_mod
 
-    monkeypatch.setattr(train_mod, "build_datasets", lambda cfg: (ds, ds))
+    monkeypatch.setattr(train_mod, "build_datasets", lambda _cfg: (ds, ds))
 
     cfg = _tiny_cfg(tmp_path)
     run_dir = fit(cfg)
