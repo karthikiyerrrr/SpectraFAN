@@ -196,3 +196,28 @@ def test_set_global_seed_enables_determinism() -> None:
 
     set_global_seed(0)
     assert torch.are_deterministic_algorithms_enabled()
+
+
+def test_resume_continues_training(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """fit two epochs, then resume from last.pt for two more; metrics.parquet has 4 rows total."""
+    ds = _SyntheticPairs()
+    import spectrafan.train as train_mod
+
+    monkeypatch.setattr(train_mod, "build_datasets", lambda _cfg: (ds, ds))
+
+    cfg = _tiny_cfg(tmp_path)
+    cfg.train.epochs = 2
+    run_dir = fit(cfg)
+
+    df_before = pl.read_parquet(run_dir / "metrics.parquet")
+    assert df_before.height == 2
+
+    # Resume with epochs bumped to 4 — should add 2 more rows (epochs 2 and 3).
+    cfg.train.epochs = 4
+    run_dir_2 = fit(cfg, resume_from=run_dir / "last.pt")
+    assert run_dir_2 == run_dir, "resume must write back into the same run dir"
+
+    df_after = pl.read_parquet(run_dir / "metrics.parquet")
+    assert df_after.height == 4
+    epochs = df_after["epoch"].to_list()
+    assert epochs == [0, 1, 2, 3], f"unexpected epoch sequence after resume: {epochs}"

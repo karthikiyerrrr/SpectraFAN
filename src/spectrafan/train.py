@@ -336,11 +336,18 @@ def build_loaders(
 
 
 class MetricsParquetWriter:
-    """Append-per-epoch parquet writer (rewrites the file each append)."""
+    """Append-per-epoch parquet writer (rewrites the file each append).
+
+    If the path already exists, prior rows are loaded so subsequent appends
+    extend the historical record (used by --resume).
+    """
 
     def __init__(self, path: Path) -> None:
         self.path = path
         self._rows: list[dict] = []
+        if path.is_file():
+            existing = pl.read_parquet(path)
+            self._rows = existing.to_dicts()
 
     def append(self, row: dict) -> None:
         self._rows.append(row)
@@ -427,6 +434,10 @@ def _save_checkpoint(
     val_iou: float,
     cfg: RunConfig,
 ) -> None:
+    import random as _random
+
+    import numpy as _np
+
     torch.save(
         {
             "model_state_dict": model.state_dict(),
@@ -435,9 +446,49 @@ def _save_checkpoint(
             "epoch": epoch,
             "val_iou": val_iou,
             "config": _run_config_to_dict(cfg),
+            "rng": {
+                "python": _random.getstate(),
+                "numpy": _np.random.get_state(),
+                "torch": torch.get_rng_state(),
+                "torch_cuda": (
+                    torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None
+                ),
+            },
         },
         path,
     )
+
+
+# ---------------------------------------------------------------------------
+# Resume helper
+# ---------------------------------------------------------------------------
+
+
+def _load_resume_state(
+    path: Path,
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler.LRScheduler,
+) -> int:
+    """Restore model/optimizer/scheduler/RNG state. Returns the starting epoch (saved_epoch + 1)."""
+    import random as _random
+
+    import numpy as _np
+
+    ckpt = torch.load(path, map_location="cpu", weights_only=False)
+    model.load_state_dict(ckpt["model_state_dict"])
+    optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+    scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+    rng = ckpt.get("rng", {})
+    if "python" in rng:
+        _random.setstate(rng["python"])
+    if "numpy" in rng:
+        _np.random.set_state(rng["numpy"])
+    if "torch" in rng:
+        torch.set_rng_state(rng["torch"])
+    if rng.get("torch_cuda") is not None and torch.cuda.is_available():
+        torch.cuda.set_rng_state_all(rng["torch_cuda"])
+    return int(ckpt["epoch"]) + 1
 
 
 # ---------------------------------------------------------------------------
@@ -445,10 +496,17 @@ def _save_checkpoint(
 # ---------------------------------------------------------------------------
 
 
-def fit(cfg: RunConfig, config_stem: str = "run") -> Path:
+def fit(cfg: RunConfig, config_stem: str = "run", resume_from: Path | None = None) -> Path:
     set_global_seed(cfg.train.seed)
     device = resolve_device(cfg.train.device)
-    run_dir = make_run_dir(cfg, config_stem=config_stem)
+
+    if resume_from is not None:
+        run_dir = resume_from.parent
+        if not run_dir.is_dir():
+            raise FileNotFoundError(f"resume parent dir does not exist: {run_dir}")
+    else:
+        run_dir = make_run_dir(cfg, config_stem=config_stem)
+
     (run_dir / "env.json").write_text(
         json.dumps(_capture_env(device, cfg.train.amp), indent=2)
     )
@@ -477,10 +535,17 @@ def fit(cfg: RunConfig, config_stem: str = "run") -> Path:
     # specified by the paper and is left at PyTorch's default (0.99 — coincidentally).
     scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=cfg.optim.decay)
 
-    writer = MetricsParquetWriter(run_dir / "metrics.parquet")
-    best_val_iou = float("-inf")
+    start_epoch = 0
+    if resume_from is not None:
+        start_epoch = _load_resume_state(resume_from, model, optimizer, scheduler)
 
-    for epoch in range(cfg.train.epochs):
+    writer = MetricsParquetWriter(run_dir / "metrics.parquet")
+    best_val_iou = max(
+        (row.get("val_iou", float("-inf")) for row in writer._rows),
+        default=float("-inf"),
+    )
+
+    for epoch in range(start_epoch, cfg.train.epochs):
         t0 = time.perf_counter()
         lr_this_epoch = optimizer.param_groups[0]["lr"]
         train_stats = train_one_epoch(
@@ -539,9 +604,15 @@ def _main() -> None:
         metavar="KEY.SUBKEY=VALUE",
         help="repeatable; YAML-coerced (e.g. --override train.epochs=5)",
     )
+    parser.add_argument(
+        "--resume",
+        type=Path,
+        default=None,
+        help="path to a checkpoint (e.g. runs/<id>/last.pt) to resume training from",
+    )
     args = parser.parse_args()
     cfg = load_config(args.config, overrides=args.override)
-    run_dir = fit(cfg, config_stem=args.config.stem)
+    run_dir = fit(cfg, config_stem=args.config.stem, resume_from=args.resume)
     print(f"run complete: {run_dir}")
 
 
