@@ -185,6 +185,9 @@ class TEMImageNetDataset(Dataset):
     image : torch.Tensor, float32, shape (3, image_size, image_size), values in [0, 1].
             Grayscale source replicated to 3 channels for the FANet RGB stem.
     mask  : torch.Tensor, float32, shape (1, image_size, image_size), values in {0.0, 1.0}.
+
+    The default ``splits_dir`` is relative to the process CWD — invoke the
+    training CLI from the repo root, or pass an absolute path explicitly.
     """
 
     def __init__(
@@ -221,6 +224,12 @@ class TEMImageNetDataset(Dataset):
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         row = self._rows[idx]
         image_np, mask_np = load_pair(Path(row["image_path"]), Path(row["mask_path"]))
+        if image_np.shape != mask_np.shape:
+            raise ValueError(f"image/mask shape mismatch: {image_np.shape} vs {mask_np.shape}")
+        if image_np.shape[0] != image_np.shape[1]:
+            raise ValueError(
+                f"non-square input {image_np.shape}; TEMImageNetDataset only supports square sources"
+            )
         image_np = _center_crop_or_resize(image_np, self.image_size)
         mask_np = _center_crop_or_resize_mask(mask_np, self.image_size)
 
