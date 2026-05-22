@@ -473,6 +473,13 @@ def fit(cfg: RunConfig, config_stem: str = "run") -> Path:
         _save_checkpoint(
             run_dir / "last.pt", model, optimizer, scheduler, epoch, val_stats["iou"], cfg
         )
+        # Save an immortal snapshot every checkpoint_every epochs. 1-indexed in
+        # the filename for human readability; 0-indexed in code.
+        if (epoch + 1) % cfg.train.checkpoint_every == 0:
+            _save_checkpoint(
+                run_dir / f"epoch_{epoch + 1:03d}.pt",
+                model, optimizer, scheduler, epoch, val_stats["iou"], cfg,
+            )
         if val_stats["iou"] > best_val_iou:
             _save_checkpoint(
                 run_dir / "best.pt", model, optimizer, scheduler, epoch, val_stats["iou"], cfg

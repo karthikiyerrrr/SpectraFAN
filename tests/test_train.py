@@ -145,6 +145,27 @@ def test_smoke_trial_acceptance() -> None:
     assert "model_state_dict" in ckpt
 
 
+def test_epoch_checkpoints_saved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """With checkpoint_every=2 and 4 epochs, epoch_002.pt and epoch_004.pt are saved."""
+    ds = _SyntheticPairs()
+    import spectrafan.train as train_mod
+
+    monkeypatch.setattr(train_mod, "build_datasets", lambda _cfg: (ds, ds))
+
+    cfg = _tiny_cfg(tmp_path)
+    cfg.train.epochs = 4
+    cfg.train.checkpoint_every = 2
+    run_dir = fit(cfg)
+
+    assert (run_dir / "epoch_002.pt").is_file()
+    assert (run_dir / "epoch_004.pt").is_file()
+    assert not (run_dir / "epoch_001.pt").exists()
+    assert not (run_dir / "epoch_003.pt").exists()
+    # best.pt + last.pt still saved every epoch
+    assert (run_dir / "best.pt").is_file()
+    assert (run_dir / "last.pt").is_file()
+
+
 def test_set_global_seed_enables_determinism() -> None:
     """set_global_seed turns on torch.use_deterministic_algorithms (warn_only)."""
     from spectrafan.train import set_global_seed
