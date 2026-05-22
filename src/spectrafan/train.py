@@ -261,6 +261,7 @@ def build_loaders(
     train_ds: Dataset, val_ds: Dataset, cfg: RunConfig, device: torch.device
 ) -> tuple[DataLoader, DataLoader]:
     pin = device.type == "cuda"
+    persistent = cfg.data.num_workers > 0
     train_loader = DataLoader(
         train_ds,
         batch_size=cfg.data.batch_size,
@@ -268,6 +269,7 @@ def build_loaders(
         num_workers=cfg.data.num_workers,
         pin_memory=pin,
         drop_last=False,
+        persistent_workers=persistent,
     )
     val_loader = DataLoader(
         val_ds,
@@ -276,6 +278,7 @@ def build_loaders(
         num_workers=cfg.data.num_workers,
         pin_memory=pin,
         drop_last=False,
+        persistent_workers=persistent,
     )
     return train_loader, val_loader
 

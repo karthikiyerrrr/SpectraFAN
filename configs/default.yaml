@@ -9,7 +9,7 @@ model:
 data:
   dataset: temimagenet
   root: data/raw/temimagenet
-  image_size: 512
+  image_size: 256              # native TEMImageNet resolution; upsampling to 512 wastes 4x compute for no information
   batch_size: 4
   subset_size: null            # null = full split
   val_subset_size: null

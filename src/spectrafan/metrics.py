@@ -45,34 +45,68 @@ def pixel_accuracy(prob: Tensor, target: Tensor, threshold: float = 0.5) -> Tens
 
 
 class RunningMetrics:
-    """Accumulate IoU / Dice / pixel-accuracy by summing num/den across batches."""
+    """Accumulate IoU / Dice / pixel-accuracy by summing num/den across batches.
+
+    Sums are kept as zero-dim tensors on the input device and only synced to
+    host scalars in ``compute()``. This avoids one ``.item()`` per batch per
+    statistic, which serializes the GPU/MPS pipeline.
+    """
 
     def __init__(self, threshold: float = 0.5) -> None:
         self.threshold = threshold
-        self.reset()
+        self._inter: Tensor | None = None
+        self._union: Tensor | None = None
+        self._dice_num: Tensor | None = None
+        self._dice_den: Tensor | None = None
+        self._correct: Tensor | None = None
+        self._total: int = 0
 
     def reset(self) -> None:
-        self._inter = 0.0
-        self._union = 0.0
-        self._dice_num = 0.0
-        self._dice_den = 0.0
-        self._correct = 0.0
-        self._total = 0.0
+        self._inter = None
+        self._union = None
+        self._dice_num = None
+        self._dice_den = None
+        self._correct = None
+        self._total = 0
 
     def update(self, logits: Tensor, target: Tensor) -> None:
         prob = torch.sigmoid(logits.detach())
         target = target.detach()
         pred = _binarize(prob, self.threshold)
-        inter = (pred * target).sum().item()
-        self._inter += inter
-        self._union += (pred.sum() + target.sum()).item() - inter
-        self._dice_num += 2.0 * inter
-        self._dice_den += (pred.sum() + target.sum()).item()
-        self._correct += (pred == target).sum().item()
-        self._total += float(target.numel())
+        inter = (pred * target).sum()
+        pred_plus_target = pred.sum() + target.sum()
+        union = pred_plus_target - inter
+        correct = (pred == target).sum()
+
+        if self._inter is None:
+            self._inter = inter
+            self._union = union
+            self._dice_num = 2.0 * inter
+            self._dice_den = pred_plus_target
+            self._correct = correct
+        else:
+            self._inter = self._inter + inter
+            self._union = self._union + union
+            self._dice_num = self._dice_num + 2.0 * inter
+            self._dice_den = self._dice_den + pred_plus_target
+            self._correct = self._correct + correct
+        self._total += target.numel()
 
     def compute(self) -> dict[str, float]:
-        iou_val = 1.0 if self._union == 0.0 else self._inter / self._union
-        dice_val = 1.0 if self._dice_den == 0.0 else self._dice_num / self._dice_den
-        acc_val = 0.0 if self._total == 0.0 else self._correct / self._total
+        if (
+            self._inter is None
+            or self._union is None
+            or self._dice_num is None
+            or self._dice_den is None
+            or self._correct is None
+        ):
+            return {"iou": 1.0, "dice": 1.0, "px_acc": 0.0}
+        inter = float(self._inter.item())
+        union = float(self._union.item())
+        dice_num = float(self._dice_num.item())
+        dice_den = float(self._dice_den.item())
+        correct = float(self._correct.item())
+        iou_val = 1.0 if union == 0.0 else inter / union
+        dice_val = 1.0 if dice_den == 0.0 else dice_num / dice_den
+        acc_val = 0.0 if self._total == 0 else correct / self._total
         return {"iou": iou_val, "dice": dice_val, "px_acc": acc_val}
