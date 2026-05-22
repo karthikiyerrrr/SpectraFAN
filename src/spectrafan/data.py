@@ -114,16 +114,16 @@ def build_split(
     if not abs(sum(fractions) - 1.0) < 1e-9:
         raise ValueError(f"fractions must sum to 1.0; got {fractions} summing to {sum(fractions)}")
 
-    ordered = sorted(stems)
+    shuffled = sorted(stems)
     rng = random.Random(seed)
-    rng.shuffle(ordered)
+    rng.shuffle(shuffled)
 
-    n = len(ordered)
-    n_train = int(round(n * fractions[0]))
-    n_val = int(round(n * fractions[1]))
-    train = ordered[:n_train]
-    val = ordered[n_train : n_train + n_val]
-    test = ordered[n_train + n_val :]
+    n = len(shuffled)
+    n_train = round(n * fractions[0])
+    n_val = round(n * fractions[1])
+    train = shuffled[:n_train]
+    val = shuffled[n_train : n_train + n_val]
+    test = shuffled[n_train + n_val :]
     return train, val, test
 
 
