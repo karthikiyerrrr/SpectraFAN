@@ -13,7 +13,11 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import json
 import os
+import platform
+import socket
+import subprocess
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -223,6 +227,34 @@ def set_global_seed(seed: int) -> None:
     torch.use_deterministic_algorithms(True, warn_only=True)
 
 
+def _capture_env(device: torch.device, amp_enabled: bool) -> dict:
+    """Snapshot the runtime environment for reproducibility audits.
+
+    Failures fall through to None rather than aborting the run — env.json is
+    best-effort metadata, not a hard precondition.
+    """
+    def _safe(cmd: list[str]) -> str | None:
+        try:
+            return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip() or None
+        except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+            return None
+
+    git_sha = _safe(["git", "rev-parse", "HEAD"])
+    git_status = _safe(["git", "status", "--porcelain"])
+    return {
+        "python_version": platform.python_version(),
+        "torch_version": torch.__version__,
+        "cuda_available": torch.cuda.is_available(),
+        "cuda_version": torch.version.cuda if torch.cuda.is_available() else None,
+        "device": str(device),
+        "platform": platform.platform(),
+        "git_sha": git_sha,
+        "git_dirty": bool(git_status) if git_status is not None else None,
+        "hostname": socket.gethostname(),
+        "amp_enabled": amp_enabled,
+    }
+
+
 def make_run_dir(cfg: RunConfig, config_stem: str = "run") -> Path:
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     run_dir = cfg.train.run_root / f"{timestamp}_{config_stem}"
@@ -417,6 +449,9 @@ def fit(cfg: RunConfig, config_stem: str = "run") -> Path:
     set_global_seed(cfg.train.seed)
     device = resolve_device(cfg.train.device)
     run_dir = make_run_dir(cfg, config_stem=config_stem)
+    (run_dir / "env.json").write_text(
+        json.dumps(_capture_env(device, cfg.train.amp), indent=2)
+    )
 
     train_ds, val_ds = build_datasets(cfg)
     train_loader, val_loader = build_loaders(train_ds, val_ds, cfg, device)

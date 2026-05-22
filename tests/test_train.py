@@ -166,6 +166,30 @@ def test_epoch_checkpoints_saved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     assert (run_dir / "last.pt").is_file()
 
 
+def test_env_json_written(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """fit() writes env.json with expected keys."""
+    import json as _json
+
+    ds = _SyntheticPairs()
+    import spectrafan.train as train_mod
+
+    monkeypatch.setattr(train_mod, "build_datasets", lambda _cfg: (ds, ds))
+
+    cfg = _tiny_cfg(tmp_path)
+    run_dir = fit(cfg)
+
+    env_path = run_dir / "env.json"
+    assert env_path.is_file()
+    env = _json.loads(env_path.read_text())
+    expected_keys = {
+        "python_version", "torch_version", "cuda_available", "cuda_version",
+        "device", "platform", "git_sha", "git_dirty", "hostname", "amp_enabled",
+    }
+    assert expected_keys <= set(env), f"missing keys: {expected_keys - set(env)}"
+    assert env["device"] == "cpu"
+    assert env["amp_enabled"] is False
+
+
 def test_set_global_seed_enables_determinism() -> None:
     """set_global_seed turns on torch.use_deterministic_algorithms (warn_only)."""
     from spectrafan.train import set_global_seed
