@@ -89,3 +89,37 @@ def test_fit_one_epoch_decreases_loss(tmp_path: Path, monkeypatch: pytest.Monkey
     assert (run_dir / "last.pt").is_file()
     assert (run_dir / "best.pt").is_file()
     assert (run_dir / "config.yaml").is_file()
+
+
+def _latest_run_dir(root: Path) -> Path:
+    runs = sorted(root.glob("*"), key=lambda p: p.stat().st_mtime)
+    if not runs:
+        pytest.skip(f"no runs in {root}; execute the smoke trial first")
+    return runs[-1]
+
+
+@pytest.mark.slow
+def test_smoke_trial_acceptance() -> None:
+    """Validate the most recent run in runs/ meets the smoke trial gate.
+
+    Pre-condition: ``uv run python -m spectrafan.train --config configs/smoke.yaml`` has
+    been executed at least once. This test does NOT launch training.
+    """
+    run_dir = _latest_run_dir(Path("runs"))
+    metrics_path = run_dir / "metrics.parquet"
+    assert metrics_path.is_file(), f"no metrics.parquet under {run_dir}"
+
+    df = pl.read_parquet(metrics_path)
+    val_iou = df["val_iou"].to_list()
+
+    assert df.height == 10, f"expected 10 epochs, got {df.height}"
+    assert val_iou[2] > val_iou[1] > val_iou[0], (
+        f"val_iou not strictly increasing over the first 3 epochs: {val_iou[:3]}"
+    )
+    assert val_iou[-1] > 0.5, f"final val_iou {val_iou[-1]:.4f} <= 0.5"
+
+    assert (run_dir / "last.pt").is_file()
+    assert (run_dir / "best.pt").is_file()
+    # Round-trip the checkpoint to make sure it's loadable.
+    ckpt = torch.load(run_dir / "best.pt", map_location="cpu", weights_only=False)
+    assert "model_state_dict" in ckpt
