@@ -27,21 +27,27 @@ def test_fam_shape_roundtrip(conv_kind: ConvKind) -> None:
 
 
 def test_fanet_shape() -> None:
-    """FANet maps (B, 3, 512, 512) to (B, 1, 512, 512) with outputs spanning (0, 1)."""
-    torch.manual_seed(0)
+    """FANet maps (B, 3, 512, 512) to (B, 1, 512, 512) logits. Sigmoid is applied externally for probabilities."""
+    torch.manual_seed(1)
     model = FANet()
     model.eval()
     x = torch.randn(1, 3, 512, 512)
     with torch.no_grad():
-        y = model(x)
-    assert y.shape == (1, 1, 512, 512)
-    assert y.dtype == x.dtype
-    assert torch.isfinite(y).all()
-    assert (y >= 0).all() and (y <= 1).all()
+        y_logits = model(x)
+    assert y_logits.shape == (1, 1, 512, 512)
+    assert y_logits.dtype == x.dtype
+    assert torch.isfinite(y_logits).all()
+
+    # Probabilities are obtained by applying sigmoid externally and must span (0, 1).
+    y_prob = torch.sigmoid(y_logits)
+    assert (y_prob >= 0).all() and (y_prob <= 1).all()
     # Catches the paper's Conv->BN->ReLU->Sigmoid OutputConv, which clamps y to [0.5, 1.0].
-    assert y.min().item() < 0.5, (
-        "OutputConv must let the sigmoid produce values below 0.5; "
-        f"got y.min()={y.min().item():.4f}. Did a ReLU sneak back in before Sigmoid?"
+    assert y_prob.min().item() < 0.5, (
+        "OutputConv must let logits go negative so sigmoid can drop below 0.5; "
+        f"got y_prob.min()={y_prob.min().item():.4f}. Did a ReLU sneak back in before the output?"
+    )
+    assert y_prob.max().item() > 0.5, (
+        f"y_prob.max()={y_prob.max().item():.4f}; logits all negative?"
     )
 
 
