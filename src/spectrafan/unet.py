@@ -8,11 +8,14 @@ the standard 1024 vs the literal-paper-reading 512 question.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Literal
 
 import torch
 from torch import nn
 
 from spectrafan.fam import ConvKind, FAMComplex
+
+OutputNorm = Literal["bn", "none", "groupnorm"]
 
 
 class DoubleConv(nn.Module):
@@ -77,13 +80,28 @@ class OutputConv(nn.Module):
     visualization). See docs/superpowers/notes/03_architecture_deviations.md.
     """
 
-    def __init__(self, in_channels: int, out_channels: int = 1) -> None:
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int = 1,
+        norm: OutputNorm = "bn",
+    ) -> None:
         super().__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=1)
-        self.bn = nn.BatchNorm2d(out_channels)
+        self.norm: nn.Module
+        if norm == "bn":
+            self.norm = nn.BatchNorm2d(out_channels)
+        elif norm == "groupnorm":
+            # GroupNorm with one group computes per-sample statistics at both
+            # train and eval time, so there is no train/eval running-stats skew.
+            self.norm = nn.GroupNorm(num_groups=1, num_channels=out_channels)
+        elif norm == "none":
+            self.norm = nn.Identity()
+        else:
+            raise ValueError(f"unknown OutputConv norm: {norm!r}")
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.bn(self.conv(x))
+        return self.norm(self.conv(x))
 
 
 class FANet(nn.Module):
@@ -106,6 +124,7 @@ class FANet(nn.Module):
         bottleneck: int = 1024,
         conv_kind: ConvKind = "depthwise",
         out_channels: int = 1,
+        output_norm: OutputNorm = "bn",
     ) -> None:
         super().__init__()
         self.channels = tuple(channels)
@@ -133,7 +152,7 @@ class FANet(nn.Module):
             self.decoders.append(DecoderModule(prev, c))
             prev = c
 
-        self.out = OutputConv(self.channels[0], out_channels)
+        self.out = OutputConv(self.channels[0], out_channels, norm=output_norm)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         skips: list[torch.Tensor] = []

@@ -28,7 +28,7 @@ from spectrafan.fam import ConvKind
 from spectrafan.losses import BCEDiceLoss
 from spectrafan.metrics import RunningMetrics
 from spectrafan.transforms import eval_transforms, train_transforms
-from spectrafan.unet import FANet
+from spectrafan.unet import FANet, OutputNorm
 
 # ---------------------------------------------------------------------------
 # Config dataclasses
@@ -40,6 +40,7 @@ class ModelConfig:
     channels: tuple[int, ...] = (64, 128, 256, 512)
     bottleneck: int = 1024
     fam_conv_kind: ConvKind = "depthwise"
+    output_norm: OutputNorm = "bn"
 
 
 @dataclass
@@ -138,6 +139,7 @@ def _dict_to_run_config(d: dict) -> RunConfig:
         channels=tuple(d.get("model", {}).get("channels", ModelConfig.channels)),
         bottleneck=d.get("model", {}).get("bottleneck", ModelConfig.bottleneck),
         fam_conv_kind=d.get("model", {}).get("fam_conv_kind", ModelConfig.fam_conv_kind),
+        output_norm=d.get("model", {}).get("output_norm", ModelConfig.output_norm),
     )
     data_raw = d.get("data", {}) or {}
     data = DataConfig(
@@ -392,6 +394,7 @@ def fit(cfg: RunConfig, config_stem: str = "run") -> Path:
     model = FANet(
         channels=tuple(cfg.model.channels),
         bottleneck=cfg.model.bottleneck,
+        output_norm=cfg.model.output_norm,
         conv_kind=cfg.model.fam_conv_kind,
     ).to(device)
 

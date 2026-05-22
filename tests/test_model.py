@@ -9,7 +9,7 @@ import torch
 from fvcore.nn import FlopCountAnalysis
 
 from spectrafan.fam import ConvKind, FAMComplex
-from spectrafan.unet import FANet
+from spectrafan.unet import FANet, OutputNorm
 
 CONV_KINDS: list[ConvKind] = ["depthwise", "depthwise_separable"]
 
@@ -49,6 +49,19 @@ def test_fanet_shape() -> None:
     assert y_prob.max().item() > 0.5, (
         f"y_prob.max()={y_prob.max().item():.4f}; logits all negative?"
     )
+
+
+@pytest.mark.parametrize("output_norm", ["bn", "none", "groupnorm"])
+def test_fanet_output_norm_variants(output_norm: OutputNorm) -> None:
+    """All three OutputConv head variants build, forward-pass, and emit finite logits."""
+    torch.manual_seed(1)
+    model = FANet(output_norm=output_norm)
+    model.eval()
+    x = torch.randn(1, 3, 256, 256)
+    with torch.no_grad():
+        y = model(x)
+    assert y.shape == (1, 1, 256, 256)
+    assert torch.isfinite(y).all()
 
 
 # Paper Table 1, FANet row.
