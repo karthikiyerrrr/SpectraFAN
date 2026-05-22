@@ -11,6 +11,7 @@ baseline-reproduction notebook.
 from __future__ import annotations
 
 import logging
+import random
 from pathlib import Path
 
 import numpy as np
@@ -98,3 +99,38 @@ def load_pair(image_path: Path, mask_path: Path) -> tuple[np.ndarray, np.ndarray
 
     mask = (mask_raw > 0).astype(np.uint8)
     return image_f, mask
+
+
+def build_split(
+    stems: list[str],
+    seed: int,
+    fractions: tuple[float, float, float] = (0.8, 0.1, 0.1),
+) -> tuple[list[str], list[str], list[str]]:
+    """Shuffle ``stems`` deterministically and slice into (train, val, test).
+
+    The input is sorted before shuffling so the result depends only on ``stems``
+    as a set and ``seed`` -- not on the input order.
+    """
+    if not abs(sum(fractions) - 1.0) < 1e-9:
+        raise ValueError(f"fractions must sum to 1.0; got {fractions} summing to {sum(fractions)}")
+
+    ordered = sorted(stems)
+    rng = random.Random(seed)
+    rng.shuffle(ordered)
+
+    n = len(ordered)
+    n_train = int(round(n * fractions[0]))
+    n_val = int(round(n * fractions[1]))
+    train = ordered[:n_train]
+    val = ordered[n_train : n_train + n_val]
+    test = ordered[n_train + n_val :]
+    return train, val, test
+
+
+def load_split(splits_dir: Path, name: str) -> list[str]:
+    """Read ``splits_dir/{name}.txt`` and return one stem per non-empty line."""
+    path = splits_dir / f"{name}.txt"
+    if not path.is_file():
+        raise FileNotFoundError(f"missing split file: {path}")
+    with path.open() as f:
+        return [line.strip() for line in f if line.strip()]

@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from spectrafan.data import list_pairs, load_pair
+from spectrafan.data import build_split, list_pairs, load_pair, load_split
 
 
 def _write_png(path: Path, size: tuple[int, int] = (8, 8)) -> None:
@@ -69,3 +69,29 @@ def test_load_pair_returns_float_image_and_binary_mask(tmp_path: Path) -> None:
     assert mask_arr.shape == (16, 16)
     assert set(np.unique(mask_arr).tolist()) <= {0, 1}
     assert mask_arr.sum() == 64  # the 8x8 white quadrant
+
+
+def test_build_split_partitions_and_is_deterministic() -> None:
+    stems = [f"{i:05d}" for i in range(100)]
+    train1, val1, test1 = build_split(stems, seed=0)
+    train2, val2, test2 = build_split(stems, seed=0)
+
+    assert (len(train1), len(val1), len(test1)) == (80, 10, 10)
+    assert set(train1) | set(val1) | set(test1) == set(stems)
+    assert not (set(train1) & set(val1))
+    assert not (set(train1) & set(test1))
+    assert not (set(val1) & set(test1))
+
+    # Determinism across re-runs.
+    assert (train1, val1, test1) == (train2, val2, test2)
+
+    # Insensitivity to input order.
+    train3, val3, test3 = build_split(list(reversed(stems)), seed=0)
+    assert (train1, val1, test1) == (train3, val3, test3)
+
+
+def test_load_split_reads_stems(tmp_path: Path) -> None:
+    splits_dir = tmp_path / "splits"
+    splits_dir.mkdir()
+    (splits_dir / "train.txt").write_text("00001\n00002\n00003\n")
+    assert load_split(splits_dir, "train") == ["00001", "00002", "00003"]
