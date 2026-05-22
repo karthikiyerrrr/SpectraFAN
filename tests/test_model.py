@@ -26,6 +26,22 @@ def test_fam_shape_roundtrip(conv_kind: ConvKind) -> None:
     assert torch.isfinite(y).all()
 
 
+def test_fam_handles_bfloat16_input() -> None:
+    """FAM must run in fp32 internally regardless of input dtype.
+
+    Regression: torch.fft.fft2 raises RuntimeError on bf16, so AMP wrapping the
+    full network forward used to crash inside FAM. The forward now escapes
+    autocast for the FFT block.
+    """
+    torch.manual_seed(0)
+    fam = FAMComplex(channels=64, conv_kind="depthwise")
+    x_bf16 = torch.randn(2, 64, 32, 32, dtype=torch.bfloat16)
+    y = fam(x_bf16)
+    assert y.shape == x_bf16.shape
+    assert y.dtype == torch.bfloat16, f"FAM must return input dtype; got {y.dtype}"
+    assert torch.isfinite(y).all()
+
+
 def test_fanet_shape() -> None:
     """FANet maps (B, 3, 512, 512) to (B, 1, 512, 512) logits. Sigmoid is applied externally for probabilities."""
     torch.manual_seed(1)

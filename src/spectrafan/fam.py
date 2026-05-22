@@ -69,9 +69,16 @@ class FAMComplex(nn.Module):
         self.final = nn.Conv2d(channels, channels, kernel_size=1, bias=True)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        freq = torch.fft.fft2(x)
-        r_prime = self.branch_real(freq.real)
-        i_prime = self.branch_imag(freq.imag)
-        freq_hat = torch.complex(r_prime, i_prime)
-        spatial_hat = torch.fft.ifft2(freq_hat).real
-        return self.final(x + spatial_hat)
+        # torch.fft.fft2 doesn't support bf16/fp16, so escape any outer autocast
+        # and run the frequency-domain block in fp32. The rest of the network keeps
+        # its autocast benefit; only this module pays the precision tax.
+        orig_dtype = x.dtype
+        with torch.amp.autocast(device_type=x.device.type, enabled=False):
+            x_fp32 = x.float()
+            freq = torch.fft.fft2(x_fp32)
+            r_prime = self.branch_real(freq.real)
+            i_prime = self.branch_imag(freq.imag)
+            freq_hat = torch.complex(r_prime, i_prime)
+            spatial_hat = torch.fft.ifft2(freq_hat).real
+            out = self.final(x_fp32 + spatial_hat)
+        return out.to(orig_dtype)
