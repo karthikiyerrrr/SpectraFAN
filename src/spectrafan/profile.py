@@ -102,8 +102,7 @@ class Timer:
 class FAMProfiled(nn.Module):
     """Wraps a FAMComplex, timing fft / branches / ifft / final separately.
 
-    Mirrors FAMComplex.forward exactly so ``state_dict()`` from a trained FAM
-    can load into the wrapped instance. After each forward, ``self.last_timings``
+    Mirrors FAMComplex.forward exactly. After each forward, ``self.last_timings``
     holds the four per-block elapsed times in microseconds.
     """
 
