@@ -15,12 +15,15 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from statistics import median, pstdev
 
+import polars as pl
 import torch
 from torch import nn
 
 from spectrafan.configs import load_raw_config
 from spectrafan.fam import ConvKind, FAMComplex
+from spectrafan.unet import FANet
 
 
 @dataclass(frozen=True)
@@ -133,3 +136,255 @@ class FAMProfiled(nn.Module):
             "final": t_final.elapsed_us,
         }
         return out.to(orig_dtype)
+
+
+def _percentile(samples: list[float], q: float) -> float:
+    """Linear-interpolated percentile (q in [0, 1]); empty list -> 0.0."""
+    if not samples:
+        return 0.0
+    s = sorted(samples)
+    if len(s) == 1:
+        return s[0]
+    pos = q * (len(s) - 1)
+    lo = int(pos)
+    hi = min(lo + 1, len(s) - 1)
+    frac = pos - lo
+    return s[lo] * (1.0 - frac) + s[hi] * frac
+
+
+def _summarize(samples: list[float]) -> dict[str, float]:
+    if not samples:
+        return {
+            "mean_us": 0.0,
+            "median_us": 0.0,
+            "p95_us": 0.0,
+            "iqr_us": 0.0,
+            "std_us": 0.0,
+        }
+    return {
+        "mean_us": sum(samples) / len(samples),
+        "median_us": median(samples),
+        "p95_us": _percentile(samples, 0.95),
+        "iqr_us": _percentile(samples, 0.75) - _percentile(samples, 0.25),
+        "std_us": pstdev(samples) if len(samples) > 1 else 0.0,
+    }
+
+
+def _attach_block_timers(model: FANet, device: torch.device) -> tuple[dict[str, list[float]], list]:
+    """Install pre/post forward hooks that record per-iteration block timings.
+
+    Returns (samples_by_key, hook_handles). Keys: 'stem', 'enc_i', 'bottleneck',
+    'dec_i', 'out'. The bottleneck block is folded into the encoder category by
+    the caller (it sits between encoders, not as a skip).
+    """
+    samples: dict[str, list[float]] = {}
+    pending: dict[str, Timer] = {}
+    handles = []
+
+    def _make_pair(name: str, module: nn.Module) -> None:
+        samples[name] = []
+
+        def pre(_m, _inp):
+            t = Timer(device)
+            t.__enter__()
+            pending[name] = t
+
+        def post(_m, _inp, _out):
+            t = pending.pop(name)
+            t.__exit__(None, None, None)
+            samples[name].append(t.elapsed_us)
+
+        handles.append(module.register_forward_pre_hook(pre))
+        handles.append(module.register_forward_hook(post))
+
+    _make_pair("stem", model.stem)
+    for i, enc in enumerate(model.encoders):
+        _make_pair(f"enc_{i}", enc)
+    _make_pair("bottleneck", model.bottleneck_module)
+    for i, dec in enumerate(model.decoders):
+        _make_pair(f"dec_{i}", dec)
+    _make_pair("out", model.out)
+    return samples, handles
+
+
+def profile_one_config(
+    image_size: int,
+    batch_size: int,
+    channels: tuple[int, ...],
+    bottleneck: int,
+    fam_conv_kind: ConvKind,
+    warmup_iters: int,
+    measure_iters: int,
+    device: torch.device,
+    seed: int,
+    include_backward: bool,
+) -> pl.DataFrame:
+    """Profile one (image_size, batch_size) configuration.
+
+    Builds a FANet, wraps each FAM with ``FAMProfiled``, attaches forward hooks
+    on stem + each encoder + bottleneck + each decoder + out, runs warm-up and
+    measured iterations, and returns a polars DataFrame with one row per
+    (category, module_path). When ``include_backward=True``, also emits a
+    single ``total_bwd`` row.
+    """
+    torch.manual_seed(seed)
+    model = FANet(
+        in_channels=3,
+        channels=channels,
+        bottleneck=bottleneck,
+        conv_kind=fam_conv_kind,
+    ).to(device)
+    model.train()
+
+    # Spatial resolution at each skip (stem keeps input HW; each encoder halves it).
+    skip_hw = [image_size]
+    for _ in channels[1:]:
+        skip_hw.append(skip_hw[-1] // 2)
+
+    # Swap FAMs for profiled wrappers.
+    profiled_fams = [FAMProfiled(fam, device=device) for fam in model.fams]
+    model.fams = nn.ModuleList(profiled_fams)
+
+    block_samples, hook_handles = _attach_block_timers(model, device)
+    total_fwd_samples: list[float] = []
+    fams_total_samples: list[float] = []
+    per_fam_samples: list[list[float]] = [[] for _ in profiled_fams]
+    fam_internal_samples: list[dict[str, list[float]]] = [
+        {"fft": [], "branches": [], "ifft": [], "final": []} for _ in profiled_fams
+    ]
+
+    x = torch.randn(batch_size, 3, image_size, image_size, device=device)
+
+    # Warm-up (drop these samples).
+    for _ in range(warmup_iters):
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+        _ = model(x)
+        for k in block_samples:
+            block_samples[k].clear()
+        for fam in profiled_fams:
+            fam.last_timings.clear()
+
+    # Measurement loop (forward, optionally backward).
+    total_bwd_samples: list[float] = []
+    for _ in range(measure_iters):
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+        if include_backward:
+            x_iter = x.clone().requires_grad_(True)
+        else:
+            x_iter = x
+        with Timer(device) as t_total:
+            out = model(x_iter)
+        total_fwd_samples.append(t_total.elapsed_us)
+
+        if include_backward:
+            loss = out.sum()
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+            with Timer(device) as t_bwd:
+                loss.backward()
+            total_bwd_samples.append(t_bwd.elapsed_us)
+            model.zero_grad(set_to_none=True)
+
+        # Per-FAM totals = sum of internal timings.
+        for idx, fam in enumerate(profiled_fams):
+            internals = fam.last_timings
+            per_fam_samples[idx].append(sum(internals.values()))
+            for k in fam_internal_samples[idx]:
+                fam_internal_samples[idx][k].append(internals[k])
+            fam.last_timings = {}
+
+        # fams_total = sum across FAMs in this iteration.
+        last_fam_sum = sum(per_fam_samples[i][-1] for i in range(len(profiled_fams)))
+        fams_total_samples.append(last_fam_sum)
+
+    for h in hook_handles:
+        h.remove()
+
+    # Group encoder/decoder/head samples (sum across blocks per iteration).
+    n = measure_iters
+    encoder_samples = [
+        block_samples["stem"][i]
+        + sum(block_samples[f"enc_{j}"][i] for j in range(len(model.encoders)))
+        + block_samples["bottleneck"][i]
+        for i in range(n)
+    ]
+    decoder_samples = [
+        sum(block_samples[f"dec_{j}"][i] for j in range(len(model.decoders))) for i in range(n)
+    ]
+    head_samples = list(block_samples["out"])
+    other_samples = [
+        total_fwd_samples[i]
+        - fams_total_samples[i]
+        - encoder_samples[i]
+        - decoder_samples[i]
+        - head_samples[i]
+        for i in range(n)
+    ]
+
+    rows: list[dict] = []
+
+    def _row(
+        category: str,
+        samples: list[float],
+        *,
+        module_path: str | None = None,
+        spatial_hw: int | None = None,
+        ch: int | None = None,
+    ) -> None:
+        s = _summarize(samples)
+        rows.append(
+            {
+                "image_size": image_size,
+                "batch_size": batch_size,
+                "pass": "fwd",
+                "category": category,
+                "module_path": module_path,
+                "spatial_hw": spatial_hw,
+                "channels": ch,
+                "n_iters": measure_iters,
+                **s,
+            }
+        )
+
+    _row("total_fwd", total_fwd_samples)
+    _row("fams_total", fams_total_samples)
+    for idx, fam_samples in enumerate(per_fam_samples):
+        _row(
+            "fam",
+            fam_samples,
+            module_path=f"fams.{idx}",
+            spatial_hw=skip_hw[idx],
+            ch=channels[idx],
+        )
+        for k in ("fft", "branches", "ifft", "final"):
+            _row(
+                k,
+                fam_internal_samples[idx][k],
+                module_path=f"fams.{idx}",
+                spatial_hw=skip_hw[idx],
+                ch=channels[idx],
+            )
+    _row("encoder", encoder_samples)
+    _row("decoder", decoder_samples)
+    _row("head", head_samples)
+    _row("other", other_samples)
+
+    if include_backward and total_bwd_samples:
+        s = _summarize(total_bwd_samples)
+        rows.append(
+            {
+                "image_size": image_size,
+                "batch_size": batch_size,
+                "pass": "bwd",
+                "category": "total_bwd",
+                "module_path": None,
+                "spatial_hw": None,
+                "channels": None,
+                "n_iters": measure_iters,
+                **s,
+            }
+        )
+
+    return pl.DataFrame(rows)
