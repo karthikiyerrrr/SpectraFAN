@@ -468,7 +468,7 @@ def _load_resume_state(
 # ---------------------------------------------------------------------------
 
 
-def _build_model(model_cfg: "ModelConfig") -> torch.nn.Module:
+def _build_model(model_cfg: ModelConfig) -> torch.nn.Module:
     """Construct the model class chosen by `model_cfg.name`.
 
     For `fanetmini`, channels and bottleneck on the config are ignored
@@ -487,9 +487,7 @@ def _build_model(model_cfg: "ModelConfig") -> torch.nn.Module:
             output_norm=model_cfg.output_norm,
             conv_kind=model_cfg.fam_conv_kind,
         )
-    raise ValueError(
-        f"unknown model.name: {model_cfg.name!r} (expected 'fanet' or 'fanetmini')"
-    )
+    raise ValueError(f"unknown model.name: {model_cfg.name!r} (expected 'fanet' or 'fanetmini')")
 
 
 # ---------------------------------------------------------------------------

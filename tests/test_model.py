@@ -212,11 +212,12 @@ def test_fanetmini_param_count_pinned() -> None:
 def test_package_reexports_models() -> None:
     """`from spectrafan import FANet, FANetMini` must work for users."""
     import spectrafan
+    from spectrafan.unet import FANet as FANet_src
+    from spectrafan.unet import FANetMini as FANetMini_src
 
     assert hasattr(spectrafan, "FANet")
     assert hasattr(spectrafan, "FANetMini")
     # Identity, not just equality — these must be the same class objects.
-    from spectrafan.unet import FANet as FANet_src, FANetMini as FANetMini_src
 
     assert spectrafan.FANet is FANet_src
     assert spectrafan.FANetMini is FANetMini_src
