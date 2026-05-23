@@ -145,3 +145,47 @@ def test_predict_writes_expected_artifacts(tmp_path: Path, monkeypatch: pytest.M
     assert 0.0 <= metrics["test_iou"] <= 1.0
     assert 0.0 <= metrics["test_dice"] <= 1.0
     assert 0.0 <= metrics["test_px_acc"] <= 1.0
+
+
+def _write_fanet_run_dir(run_dir: Path, image_size: int = 32) -> None:
+    """Write a config.yaml + best.pt for paper-FANet with tiny widths (fast test)."""
+    run_dir.mkdir(parents=True, exist_ok=True)
+    cfg_dict = {
+        "model": {
+            "name": "fanet",
+            "channels": [8, 16, 32, 64],
+            "bottleneck": 128,
+        },
+        "data": {
+            "image_size": image_size,
+            "batch_size": 4,
+            "root": "data/raw/temimagenet",
+            "splits_dir": "data/splits/temimagenet_v1",
+        },
+        "train": {"device": "cpu"},
+    }
+    (run_dir / "config.yaml").write_text(yaml.safe_dump(cfg_dict))
+    from spectrafan.unet import FANet
+
+    model = FANet(channels=(8, 16, 32, 64), bottleneck=128)
+    torch.save(
+        {"model_state_dict": model.state_dict(), "epoch": 9, "val_iou": 0.6234},
+        run_dir / "best.pt",
+    )
+
+
+def test_predict_works_for_fanet_too(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """predict_run dispatches through build_model and works for FANet runs too."""
+    from spectrafan import predict as predict_mod
+
+    run_dir = tmp_path / "2026-05-23_000000_full_repro"
+    _write_fanet_run_dir(run_dir, image_size=32)
+
+    monkeypatch.setattr(predict_mod, "TEMImageNetDataset", _FakeTEMDataset)
+
+    predict_mod.predict_run(run_dir)
+
+    assert (run_dir / "predictions.npz").is_file()
+    metrics = json.loads((run_dir / "test_metrics.json").read_text())
+    assert metrics["epoch"] == 10
+    assert metrics["val_iou"] == pytest.approx(0.6234)
