@@ -226,6 +226,11 @@ def profile_one_config(
     measured iterations, and returns a polars DataFrame with one row per
     (category, module_path). When ``include_backward=True``, also emits a
     single ``total_bwd`` row.
+
+    The ``encoder`` category includes the stem, all encoder blocks, AND the
+    bottleneck module (treated as an opaque non-FAM block per the design).
+    The ``other`` category is the residual ``total_fwd - fams_total - encoder
+    - decoder - head`` and can go slightly negative on noisy CPUs.
     """
     torch.manual_seed(seed)
     model = FANet(
@@ -255,52 +260,53 @@ def profile_one_config(
 
     x = torch.randn(batch_size, 3, image_size, image_size, device=device)
 
-    # Warm-up (drop these samples).
-    for _ in range(warmup_iters):
-        if device.type == "cuda":
-            torch.cuda.synchronize()
-        _ = model(x)
-        for k in block_samples:
-            block_samples[k].clear()
-        for fam in profiled_fams:
-            fam.last_timings.clear()
-
-    # Measurement loop (forward, optionally backward).
     total_bwd_samples: list[float] = []
-    for _ in range(measure_iters):
-        if device.type == "cuda":
-            torch.cuda.synchronize()
-        if include_backward:
-            x_iter = x.clone().requires_grad_(True)
-        else:
-            x_iter = x
-        with Timer(device) as t_total:
-            out = model(x_iter)
-        total_fwd_samples.append(t_total.elapsed_us)
-
-        if include_backward:
-            loss = out.sum()
+    try:
+        # Warm-up (drop these samples).
+        for _ in range(warmup_iters):
             if device.type == "cuda":
                 torch.cuda.synchronize()
-            with Timer(device) as t_bwd:
-                loss.backward()
-            total_bwd_samples.append(t_bwd.elapsed_us)
-            model.zero_grad(set_to_none=True)
+            _ = model(x)
+            for k in block_samples:
+                block_samples[k].clear()
+            for fam in profiled_fams:
+                fam.last_timings.clear()
 
-        # Per-FAM totals = sum of internal timings.
-        for idx, fam in enumerate(profiled_fams):
-            internals = fam.last_timings
-            per_fam_samples[idx].append(sum(internals.values()))
-            for k in fam_internal_samples[idx]:
-                fam_internal_samples[idx][k].append(internals[k])
-            fam.last_timings = {}
+        # Measurement loop (forward, optionally backward).
+        for _ in range(measure_iters):
+            if device.type == "cuda":
+                torch.cuda.synchronize()
+            if include_backward:
+                x_iter = x.clone().requires_grad_(True)
+            else:
+                x_iter = x
+            with Timer(device) as t_total:
+                out = model(x_iter)
+            total_fwd_samples.append(t_total.elapsed_us)
 
-        # fams_total = sum across FAMs in this iteration.
-        last_fam_sum = sum(per_fam_samples[i][-1] for i in range(len(profiled_fams)))
-        fams_total_samples.append(last_fam_sum)
+            if include_backward:
+                loss = out.sum()
+                if device.type == "cuda":
+                    torch.cuda.synchronize()
+                with Timer(device) as t_bwd:
+                    loss.backward()
+                total_bwd_samples.append(t_bwd.elapsed_us)
+                model.zero_grad(set_to_none=True)
 
-    for h in hook_handles:
-        h.remove()
+            # Per-FAM totals = sum of internal timings.
+            for idx, fam in enumerate(profiled_fams):
+                internals = fam.last_timings
+                per_fam_samples[idx].append(sum(internals.values()))
+                for k in fam_internal_samples[idx]:
+                    fam_internal_samples[idx][k].append(internals[k])
+                fam.last_timings = {}
+
+            # fams_total = sum across FAMs in this iteration.
+            last_fam_sum = sum(per_fam_samples[i][-1] for i in range(len(profiled_fams)))
+            fams_total_samples.append(last_fam_sum)
+    finally:
+        for h in hook_handles:
+            h.remove()
 
     # Group encoder/decoder/head samples (sum across blocks per iteration).
     n = measure_iters
