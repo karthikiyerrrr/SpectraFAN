@@ -1,0 +1,10 @@
+# FANetMini training config. Same recipe as default.yaml (paper FANet),
+# but instantiates the 3-scale TEMImageNet-sized FANetMini class instead.
+# Recipe retune is out of scope for the initial FANetMini measurement.
+
+extends: default.yaml
+
+model:
+  name: fanetmini
+  # channels and bottleneck are ignored when name == fanetmini (the class
+  # hardcodes them). Left out of this file rather than left in as misleading.
