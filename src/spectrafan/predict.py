@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
 
 from spectrafan.data import TEMImageNetDataset
 from spectrafan.metrics import RunningMetrics
@@ -41,7 +41,7 @@ def find_latest_run(runs_root: Path, suffix: str) -> Path:
 
 def _collect_subset(
     model: torch.nn.Module,
-    dataset,
+    dataset: Dataset,
     device: torch.device,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Run `model` over every item in `dataset`. Returns (images, masks, preds, ids)
