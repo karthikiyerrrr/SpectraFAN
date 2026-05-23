@@ -182,8 +182,16 @@ def test_env_json_written(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     assert env_path.is_file()
     env = _json.loads(env_path.read_text())
     expected_keys = {
-        "python_version", "torch_version", "cuda_available", "cuda_version",
-        "device", "platform", "git_sha", "git_dirty", "hostname", "amp_enabled",
+        "python_version",
+        "torch_version",
+        "cuda_available",
+        "cuda_version",
+        "device",
+        "platform",
+        "git_sha",
+        "git_dirty",
+        "hostname",
+        "amp_enabled",
     }
     assert expected_keys <= set(env), f"missing keys: {expected_keys - set(env)}"
     assert env["device"] == "cpu"

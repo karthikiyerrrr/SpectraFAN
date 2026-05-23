@@ -17,7 +17,6 @@ with app.setup:
     _ = torch.set_grad_enabled(False)
 
 
-
 @app.cell(hide_code=True)
 def intro():
     mo.md(r"""
@@ -81,10 +80,8 @@ def lattice_demo():
             img = img + torch.cos(fy * y + fx * x + phi)
         return img
 
-
     lattice = make_lattice()
     lattice_spectrum = torch.fft.fftshift(torch.fft.fft2(lattice)).abs().log1p()
-
 
     def _square_fig(arr, title, cmap):
         f = px.imshow(arr, color_continuous_scale=cmap, title=title, aspect="equal")
@@ -95,7 +92,6 @@ def lattice_demo():
             margin=dict(l=10, r=10, t=40, b=10),
         )
         return f
-
 
     mo.hstack(
         [
@@ -160,14 +156,12 @@ def fam_steps():
     spatial_hat = torch.fft.ifft2(freq_hat).real
     y_demo = fam_demo.final(x_demo + spatial_hat)
 
-
     def _row(stage, t):
         return {
             "stage": stage,
             "shape": str(tuple(t.shape)),
             "dtype": str(t.dtype).removeprefix("torch."),
         }
-
 
     steps_df = pl.DataFrame(
         [
@@ -212,7 +206,6 @@ def fam_on_lattice(lattice):
     in_spec = torch.fft.fftshift(torch.fft.fft2(lattice_input[0, 0])).abs().log1p()
     out_spec = torch.fft.fftshift(torch.fft.fft2(lattice_output[0, 0])).abs().log1p()
 
-
     def _spec_fig(arr, title):
         f = px.imshow(arr, color_continuous_scale="magma", title=title, aspect="equal")
         f.update_layout(
@@ -222,7 +215,6 @@ def fam_on_lattice(lattice):
             margin=dict(l=10, r=10, t=40, b=10),
         )
         return f
-
 
     mo.hstack(
         [
@@ -254,12 +246,11 @@ def per_scale_md():
 @app.cell
 def per_scale_table():
     skip_specs = [
-        (64, 512),   # stem output
+        (64, 512),  # stem output
         (128, 256),  # encoder 1
         (256, 128),  # encoder 2
-        (512, 64),   # encoder 3
+        (512, 64),  # encoder 3
     ]
-
 
     def _fam_costs():
         rows = []
@@ -270,14 +261,15 @@ def per_scale_table():
             fc = FlopCountAnalysis(fam, skip_tensor)
             fc.unsupported_ops_warnings(False)
             fc.uncalled_modules_warnings(False)
-            rows.append({
-                "skip": f"FAM({channels})",
-                "input shape": f"(1, {channels}, {spatial}, {spatial})",
-                "params (K)": round(params / 1e3, 1),
-                "GFLOPs @ 512² input": round(fc.total() / 1e9, 3),
-            })
+            rows.append(
+                {
+                    "skip": f"FAM({channels})",
+                    "input shape": f"(1, {channels}, {spatial}, {spatial})",
+                    "params (K)": round(params / 1e3, 1),
+                    "GFLOPs @ 512² input": round(fc.total() / 1e9, 3),
+                }
+            )
         return rows
-
 
     per_skip_df = pl.DataFrame(_fam_costs())
     per_skip_df
@@ -341,21 +333,30 @@ def shape_walk():
         for idx, enc in enumerate(model.encoders):
             h = enc(h)
             skips_local.append(h)
-            rows.append({"stage": f"encoders[{idx}]", "produces": f"skip{idx + 1}", "shape": str(tuple(h.shape))})
+            rows.append(
+                {
+                    "stage": f"encoders[{idx}]",
+                    "produces": f"skip{idx + 1}",
+                    "shape": str(tuple(h.shape)),
+                }
+            )
 
         h = model.bottleneck_module(h)
         rows.append({"stage": "bottleneck", "produces": "—", "shape": str(tuple(h.shape))})
 
         filtered_local = [fam(s) for fam, s in zip(model.fams, skips_local, strict=True)]
-        for idx, (dec, skip) in enumerate(zip(model.decoders, reversed(filtered_local), strict=True)):
+        for idx, (dec, skip) in enumerate(
+            zip(model.decoders, reversed(filtered_local), strict=True)
+        ):
             h = dec(h, skip)
-            rows.append({"stage": f"decoders[{idx}]", "produces": "—", "shape": str(tuple(h.shape))})
+            rows.append(
+                {"stage": f"decoders[{idx}]", "produces": "—", "shape": str(tuple(h.shape))}
+            )
 
         h = model.out(h)
         rows.append({"stage": "out", "produces": "y", "shape": str(tuple(h.shape))})
 
         return rows
-
 
     wiring_df = pl.DataFrame(_walk_fanet_shapes())
     wiring_df

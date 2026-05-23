@@ -22,7 +22,6 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 import polars as pl
 import torch
@@ -100,45 +99,15 @@ class RunConfig:
 
 
 # ---------------------------------------------------------------------------
-# Config loading (YAML + extends + --override)
+# Config loading
 # ---------------------------------------------------------------------------
 
 
-def _deep_merge(base: dict, overlay: dict) -> dict:
-    out = dict(base)
-    for k, v in overlay.items():
-        if isinstance(v, dict) and isinstance(out.get(k), dict):
-            out[k] = _deep_merge(out[k], v)
-        else:
-            out[k] = v
-    return out
-
-
-def _coerce(value: str) -> Any:
-    """Parse `--override` values as YAML scalars (bool/int/float/str/list)."""
-    return yaml.safe_load(value)
-
-
-def _apply_override(d: dict, dotted_key: str, value: Any) -> None:
-    parts = dotted_key.split(".")
-    cur = d
-    for p in parts[:-1]:
-        cur = cur.setdefault(p, {})
-    cur[parts[-1]] = value
-
-
 def load_config(path: Path, overrides: list[str] | None = None) -> RunConfig:
-    """Load a YAML config with ``extends:`` support and ``key.subkey=value`` overrides."""
-    raw = yaml.safe_load(path.read_text()) or {}
-    if "extends" in raw:
-        base_path = path.parent / raw.pop("extends")
-        base = yaml.safe_load(base_path.read_text()) or {}
-        raw = _deep_merge(base, raw)
-    for override in overrides or []:
-        if "=" not in override:
-            raise ValueError(f"override must be key=value; got {override!r}")
-        key, _, value = override.partition("=")
-        _apply_override(raw, key.strip(), _coerce(value.strip()))
+    """Load a YAML config with `extends:` support and `key.subkey=value` overrides."""
+    from spectrafan.configs import load_raw_config
+
+    raw = load_raw_config(path, overrides=overrides)
     return _dict_to_run_config(raw)
 
 
@@ -233,6 +202,7 @@ def _capture_env(device: torch.device, amp_enabled: bool) -> dict:
     Failures fall through to None rather than aborting the run — env.json is
     best-effort metadata, not a hard precondition.
     """
+
     def _safe(cmd: list[str]) -> str | None:
         try:
             return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip() or None
@@ -507,9 +477,7 @@ def fit(cfg: RunConfig, config_stem: str = "run", resume_from: Path | None = Non
     else:
         run_dir = make_run_dir(cfg, config_stem=config_stem)
 
-    (run_dir / "env.json").write_text(
-        json.dumps(_capture_env(device, cfg.train.amp), indent=2)
-    )
+    (run_dir / "env.json").write_text(json.dumps(_capture_env(device, cfg.train.amp), indent=2))
 
     train_ds, val_ds = build_datasets(cfg)
     train_loader, val_loader = build_loaders(train_ds, val_ds, cfg, device)
@@ -549,10 +517,19 @@ def fit(cfg: RunConfig, config_stem: str = "run", resume_from: Path | None = Non
         t0 = time.perf_counter()
         lr_this_epoch = optimizer.param_groups[0]["lr"]
         train_stats = train_one_epoch(
-            model, train_loader, loss_fn, optimizer, device, amp_enabled=cfg.train.amp,
+            model,
+            train_loader,
+            loss_fn,
+            optimizer,
+            device,
+            amp_enabled=cfg.train.amp,
         )
         val_stats = validate(
-            model, val_loader, loss_fn, device, amp_enabled=cfg.train.amp,
+            model,
+            val_loader,
+            loss_fn,
+            device,
+            amp_enabled=cfg.train.amp,
         )
         scheduler.step()
 
@@ -585,7 +562,12 @@ def fit(cfg: RunConfig, config_stem: str = "run", resume_from: Path | None = Non
         if (epoch + 1) % cfg.train.checkpoint_every == 0:
             _save_checkpoint(
                 run_dir / f"epoch_{epoch + 1:03d}.pt",
-                model, optimizer, scheduler, epoch, val_stats["iou"], cfg,
+                model,
+                optimizer,
+                scheduler,
+                epoch,
+                val_stats["iou"],
+                cfg,
             )
         if val_stats["iou"] > best_val_iou:
             _save_checkpoint(
