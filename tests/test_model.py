@@ -194,3 +194,16 @@ def test_fanetmini_inherits_fanet_backbone() -> None:
     assert hasattr(model, "decoders") and len(model.decoders) == 3
     assert hasattr(model, "bottleneck_module")
     assert hasattr(model, "out")
+
+
+def test_fanetmini_param_count_pinned() -> None:
+    """Pin FANetMini parameter count. Equality (not range) so any accidental
+    composition change surfaces as a diff in this test."""
+    from spectrafan.unet import FANetMini
+
+    expected = 1958595  # measured from FANetMini() once
+    actual = sum(p.numel() for p in FANetMini().parameters())
+    assert actual == expected, (
+        f"FANetMini param count changed: expected {expected}, got {actual}. "
+        "If this is intentional, update the pinned value."
+    )
