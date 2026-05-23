@@ -7,6 +7,7 @@ domain-agnostic; each caller projects it onto its own dataclass(es).
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import Any
 
@@ -37,7 +38,7 @@ def _set_dotted(d: dict, dotted_key: str, value: Any) -> None:
 
 
 def apply_overrides(d: dict, overrides: list[str]) -> dict:
-    out = dict(d)
+    out = copy.deepcopy(d)
     for override in overrides:
         if "=" not in override:
             raise ValueError(f"override must be key=value; got {override!r}")
@@ -47,7 +48,13 @@ def apply_overrides(d: dict, overrides: list[str]) -> dict:
 
 
 def load_raw_config(path: Path, overrides: list[str] | None = None) -> dict:
-    """Load a YAML file, resolve a single `extends:` parent, apply overrides."""
+    """Load a YAML file, resolve one level of `extends:`, apply overrides.
+
+    Only the immediate `extends:` parent is resolved. If the resolved parent
+    itself contains `extends:`, that nested directive is silently ignored
+    (the key passes through into the merged dict). Multi-level extends chains
+    are not supported; revisit if a use case appears.
+    """
     raw = yaml.safe_load(path.read_text()) or {}
     if "extends" in raw:
         base_path = path.parent / raw.pop("extends")
