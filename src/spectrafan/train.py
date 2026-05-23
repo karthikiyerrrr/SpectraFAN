@@ -468,7 +468,7 @@ def _load_resume_state(
 # ---------------------------------------------------------------------------
 
 
-def _build_model(model_cfg: ModelConfig) -> torch.nn.Module:
+def build_model(model_cfg: ModelConfig) -> torch.nn.Module:
     """Construct the model class chosen by `model_cfg.name`.
 
     For `fanetmini`, channels and bottleneck on the config are ignored
@@ -511,7 +511,7 @@ def fit(cfg: RunConfig, config_stem: str = "run", resume_from: Path | None = Non
     train_ds, val_ds = build_datasets(cfg)
     train_loader, val_loader = build_loaders(train_ds, val_ds, cfg, device)
 
-    model = _build_model(cfg.model).to(device)
+    model = build_model(cfg.model).to(device)
 
     loss_fn = BCEDiceLoss(
         ce_weight=cfg.train.loss_ce_weight, dice_weight=cfg.train.loss_dice_weight

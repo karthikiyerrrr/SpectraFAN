@@ -264,10 +264,7 @@ def test_dict_to_run_config_parses_model_name(tmp_path: Path) -> None:
 
     cfg_path = tmp_path / "test.yaml"
     cfg_path.write_text(
-        "model:\n"
-        "  name: fanetmini\n"
-        "data:\n"
-        "  splits_dir: data/splits/temimagenet_v1\n"
+        "model:\n  name: fanetmini\ndata:\n  splits_dir: data/splits/temimagenet_v1\n"
     )
     cfg = load_config(cfg_path)
     assert cfg.model.name == "fanetmini"
@@ -278,54 +275,52 @@ def test_dict_to_run_config_defaults_model_name_when_omitted(tmp_path: Path) -> 
     from spectrafan.train import load_config
 
     cfg_path = tmp_path / "test.yaml"
-    cfg_path.write_text(
-        "data:\n  splits_dir: data/splits/temimagenet_v1\n"
-    )
+    cfg_path.write_text("data:\n  splits_dir: data/splits/temimagenet_v1\n")
     cfg = load_config(cfg_path)
     assert cfg.model.name == "fanet"
 
 
-def test_build_model_fanet_default() -> None:
-    """_build_model returns a FANet instance for the default name."""
-    from spectrafan.train import ModelConfig, _build_model
+def testbuild_model_fanet_default() -> None:
+    """build_model returns a FANet instance for the default name."""
+    from spectrafan.train import ModelConfig, build_model
     from spectrafan.unet import FANet, FANetMini
 
     cfg = ModelConfig()  # name defaults to "fanet"
-    model = _build_model(cfg)
+    model = build_model(cfg)
     assert isinstance(model, FANet)
     assert not isinstance(model, FANetMini), (
         "ModelConfig() with default name=fanet must NOT return a FANetMini"
     )
 
 
-def test_build_model_fanetmini() -> None:
-    """_build_model returns a FANetMini instance when name='fanetmini'."""
-    from spectrafan.train import ModelConfig, _build_model
+def testbuild_model_fanetmini() -> None:
+    """build_model returns a FANetMini instance when name='fanetmini'."""
+    from spectrafan.train import ModelConfig, build_model
     from spectrafan.unet import FANetMini
 
     cfg = ModelConfig(name="fanetmini")
-    model = _build_model(cfg)
+    model = build_model(cfg)
     assert isinstance(model, FANetMini)
     # FANetMini hardcodes its widths regardless of cfg.channels/bottleneck.
     assert tuple(fam.channels for fam in model.fams) == (32, 64, 128)
 
 
-def test_build_model_unknown_name_raises() -> None:
-    """_build_model rejects unknown model.name values with a ValueError."""
-    from spectrafan.train import ModelConfig, _build_model
+def testbuild_model_unknown_name_raises() -> None:
+    """build_model rejects unknown model.name values with a ValueError."""
+    from spectrafan.train import ModelConfig, build_model
 
     cfg = ModelConfig(name="not-a-real-model")
     with pytest.raises(ValueError, match="unknown model.name"):
-        _build_model(cfg)
+        build_model(cfg)
 
 
-def test_build_model_fanetmini_ignores_channels_and_bottleneck() -> None:
+def testbuild_model_fanetmini_ignores_channels_and_bottleneck() -> None:
     """When name='fanetmini', cfg.channels/bottleneck are deliberately
     ignored by the dispatch (the class hardcodes them)."""
-    from spectrafan.train import ModelConfig, _build_model
+    from spectrafan.train import ModelConfig, build_model
 
     cfg = ModelConfig(name="fanetmini", channels=(99, 99, 99, 99), bottleneck=99)
-    model = _build_model(cfg)
+    model = build_model(cfg)
     assert tuple(fam.channels for fam in model.fams) == (32, 64, 128), (
         "FANetMini must hardcode (32, 64, 128); cfg.channels must be ignored"
     )
