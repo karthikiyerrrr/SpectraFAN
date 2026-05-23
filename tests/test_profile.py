@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
-from spectrafan.profile import ProfileConfig, ProfileSweepEntry, load_profile_config
+import torch
+
+from spectrafan.profile import ProfileConfig, ProfileSweepEntry, Timer, load_profile_config
 
 
 def test_load_profile_config_reads_default_file() -> None:
@@ -30,3 +33,21 @@ def test_load_profile_config_applies_overrides() -> None:
     )
     assert cfg.warmup_iters == 3
     assert cfg.measure_iters == 5
+
+
+def test_timer_cpu_measures_positive_elapsed() -> None:
+    device = torch.device("cpu")
+    with Timer(device) as t:
+        time.sleep(0.005)
+    assert t.elapsed_us > 1000  # at least 1 ms
+
+
+def test_timer_cpu_reusable_across_iterations() -> None:
+    device = torch.device("cpu")
+    samples: list[float] = []
+    for _ in range(3):
+        with Timer(device) as t:
+            time.sleep(0.001)
+        samples.append(t.elapsed_us)
+    assert len(samples) == 3
+    assert all(s > 0 for s in samples)

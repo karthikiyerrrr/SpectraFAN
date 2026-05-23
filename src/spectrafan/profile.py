@@ -12,8 +12,11 @@ See docs/superpowers/specs/2026-05-22-fam-profiling-design.md for the design.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import torch
 
 from spectrafan.configs import load_raw_config
 from spectrafan.fam import ConvKind
@@ -56,3 +59,38 @@ def load_profile_config(path: Path, overrides: list[str] | None = None) -> Profi
         model_bottleneck=model_raw.get("bottleneck", ProfileConfig.model_bottleneck),
         model_fam_conv_kind=model_raw.get("fam_conv_kind", ProfileConfig.model_fam_conv_kind),
     )
+
+
+class Timer:
+    """Context manager that times a code block on the given device.
+
+    On CUDA, uses ``torch.cuda.Event(enable_timing=True)`` pairs and forces a
+    ``torch.cuda.synchronize()`` on exit so ``elapsed_us`` reflects completed
+    work, not queued work. On CPU/MPS, falls back to ``time.perf_counter_ns``.
+    """
+
+    def __init__(self, device: torch.device) -> None:
+        self.device = device
+        self.elapsed_us: float = 0.0
+        self._start_event: torch.cuda.Event | None = None
+        self._end_event: torch.cuda.Event | None = None
+        self._t0_ns: int | None = None
+
+    def __enter__(self) -> Timer:
+        if self.device.type == "cuda":
+            self._start_event = torch.cuda.Event(enable_timing=True)
+            self._end_event = torch.cuda.Event(enable_timing=True)
+            self._start_event.record()
+        else:
+            self._t0_ns = time.perf_counter_ns()
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        if self.device.type == "cuda":
+            assert self._start_event is not None and self._end_event is not None
+            self._end_event.record()
+            torch.cuda.synchronize()
+            self.elapsed_us = self._start_event.elapsed_time(self._end_event) * 1000.0
+        else:
+            assert self._t0_ns is not None
+            self.elapsed_us = (time.perf_counter_ns() - self._t0_ns) / 1000.0
