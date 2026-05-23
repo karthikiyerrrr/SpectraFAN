@@ -42,6 +42,7 @@ from spectrafan.unet import FANet, OutputNorm
 
 @dataclass
 class ModelConfig:
+    name: str = "fanet"  # "fanet" | "fanetmini"; see fit() for dispatch
     channels: tuple[int, ...] = (64, 128, 256, 512)
     bottleneck: int = 1024
     fam_conv_kind: ConvKind = "depthwise"
@@ -113,6 +114,7 @@ def load_config(path: Path, overrides: list[str] | None = None) -> RunConfig:
 
 def _dict_to_run_config(d: dict) -> RunConfig:
     model = ModelConfig(
+        name=d.get("model", {}).get("name", ModelConfig.name),
         channels=tuple(d.get("model", {}).get("channels", ModelConfig.channels)),
         bottleneck=d.get("model", {}).get("bottleneck", ModelConfig.bottleneck),
         fam_conv_kind=d.get("model", {}).get("fam_conv_kind", ModelConfig.fam_conv_kind),

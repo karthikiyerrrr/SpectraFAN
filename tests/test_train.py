@@ -247,3 +247,39 @@ def test_resume_continues_training(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert df_after.height == 4
     epochs = df_after["epoch"].to_list()
     assert epochs == [0, 1, 2, 3], f"unexpected epoch sequence after resume: {epochs}"
+
+
+def test_model_config_name_defaults_to_fanet() -> None:
+    """`ModelConfig.name` defaults to "fanet" so existing configs without the
+    field continue to instantiate the original FANet class."""
+    from spectrafan.train import ModelConfig
+
+    cfg = ModelConfig()
+    assert cfg.name == "fanet"
+
+
+def test_dict_to_run_config_parses_model_name(tmp_path: Path) -> None:
+    """The YAML loader picks up `model.name` from a config file."""
+    from spectrafan.train import load_config
+
+    cfg_path = tmp_path / "test.yaml"
+    cfg_path.write_text(
+        "model:\n"
+        "  name: fanetmini\n"
+        "data:\n"
+        "  splits_dir: data/splits/temimagenet_v1\n"
+    )
+    cfg = load_config(cfg_path)
+    assert cfg.model.name == "fanetmini"
+
+
+def test_dict_to_run_config_defaults_model_name_when_omitted(tmp_path: Path) -> None:
+    """A config without `model.name` falls back to the dataclass default."""
+    from spectrafan.train import load_config
+
+    cfg_path = tmp_path / "test.yaml"
+    cfg_path.write_text(
+        "data:\n  splits_dir: data/splits/temimagenet_v1\n"
+    )
+    cfg = load_config(cfg_path)
+    assert cfg.model.name == "fanet"
