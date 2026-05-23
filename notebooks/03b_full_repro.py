@@ -12,14 +12,83 @@ def _():
         """
         # 03b — FANet full reproduction inspector
 
-        Inspect a `configs/full_repro.yaml` training run produced by `colab_full_repro.ipynb`.
-        Renders curves, config + env.json, sample predictions, and a single-shot test-set evaluation.
-
-        Spec: `docs/superpowers/specs/2026-05-22-fanet-full-reproduction-design.md`.
+        Inspect a `configs/full_repro.yaml` training run produced on Colab. Renders curves,
+        config + env.json, sample predictions, and a held-out test-set evaluation.
         """
     )
 
     return (mo,)
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.accordion(
+        {
+            "How to reproduce a run (Colab L4/A100)": mo.md(
+                r"""
+                Create a Jupyter notebook in your Drive folder
+                `My Drive/03 Projects/02 SpectraFAN/` named `colab_full_repro.ipynb`
+                (kept out of version control on purpose). Paste these eight cells in order,
+                pick an L4 or A100 runtime, and run all. Artifacts land in
+                `My Drive/03 Projects/02 SpectraFAN/runs/<timestamp>_full_repro/`, which
+                Google Drive desktop mirrors to your laptop where this notebook reads them.
+
+                **Cell 1 (markdown):** title / one-line description.
+
+                **Cell 2 (code):** mount Drive.
+                ```python
+                from google.colab import drive
+                drive.mount('/content/drive')
+                ```
+
+                **Cell 3 (code):** anchor Drive root.
+                ```python
+                import os
+                DRIVE_ROOT = '/content/drive/MyDrive/03 Projects/02 SpectraFAN'
+                os.environ['DRIVE_ROOT'] = DRIVE_ROOT
+                assert os.path.isdir(DRIVE_ROOT), f'expected Drive folder not found: {DRIVE_ROOT}'
+                ```
+
+                **Cell 4 (code):** clone repo into Colab local disk (idempotent).
+                ```python
+                !test -d /content/SpectraFAN || git clone https://github.com/karthikiyerrrr/SpectraFAN.git /content/SpectraFAN
+                ```
+
+                **Cell 5 (code):** install pinned env from `uv.lock`.
+                ```python
+                !cd /content/SpectraFAN && pip install uv -q && uv python install 3.11 && uv sync --frozen --no-dev
+                ```
+
+                **Cell 6 (code):** download TEMImageNet into `data/raw/` (~2 GB, idempotent).
+                ```python
+                !cd /content/SpectraFAN && uv run python data/download.py
+                ```
+
+                **Cell 7 (code):** symlink `runs/` to Drive so artifacts persist + sync.
+                ```python
+                !cd /content/SpectraFAN && mkdir -p "$DRIVE_ROOT/runs" && ln -sfn "$DRIVE_ROOT/runs" runs
+                ```
+
+                **Cell 8 (code):** train. Use `!` line magic and `python -u` so stdout streams live.
+                ```python
+                !cd /content/SpectraFAN && uv run python -u -m spectrafan.train --config configs/full_repro.yaml
+                ```
+                On a Colab session disconnect, reconnect, re-run cells 2-7 (idempotent), then
+                add `--resume runs/<timestamp>_full_repro/last.pt` to cell 8 and re-run it.
+
+                To extend a finished run from 50 → 100 epochs, override the epoch count:
+                ```python
+                !cd /content/SpectraFAN && uv run python -u -m spectrafan.train \
+                    --config configs/full_repro.yaml \
+                    --override train.epochs=100 \
+                    --resume runs/<timestamp>_full_repro/last.pt
+                ```
+                """
+            ),
+        }
+    )
+
+    return
 
 
 @app.cell(hide_code=True)

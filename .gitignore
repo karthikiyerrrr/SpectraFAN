@@ -15,6 +15,10 @@ __pycache__/
 # marimo per-notebook session cache
 __marimo__/
 
+# Personal Colab launcher notebooks (per-user paths, auth state, etc.)
+# The canonical 8-cell content lives in notebooks/03b_full_repro.py.
+notebooks/colab_*.ipynb
+
 # Data & checkpoints (never commit)
 data/raw/
 data/processed/
