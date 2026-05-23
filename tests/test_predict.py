@@ -189,3 +189,66 @@ def test_predict_works_for_fanet_too(tmp_path: Path, monkeypatch: pytest.MonkeyP
     metrics = json.loads((run_dir / "test_metrics.json").read_text())
     assert metrics["epoch"] == 10
     assert metrics["val_iou"] == pytest.approx(0.6234)
+
+
+def test_predict_cli_requires_run_or_latest(monkeypatch) -> None:
+    """argparse rejects invocation with neither --run nor --latest."""
+    from spectrafan import predict as predict_mod
+
+    monkeypatch.setattr("sys.argv", ["spectrafan.predict"])
+    with pytest.raises(SystemExit):
+        predict_mod._main()
+
+
+def test_predict_cli_rejects_both_run_and_latest(monkeypatch, tmp_path: Path) -> None:
+    """argparse rejects invocation with both --run and --latest (mutually exclusive)."""
+    from spectrafan import predict as predict_mod
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["spectrafan.predict", "--run", str(tmp_path), "--latest", "fanetmini"],
+    )
+    with pytest.raises(SystemExit):
+        predict_mod._main()
+
+
+def test_predict_cli_runs_predict_with_run_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CLI with --run <path> invokes predict_run on that path."""
+    from spectrafan import predict as predict_mod
+
+    run_dir = tmp_path / "2026-05-23_000000_fanetmini"
+    _write_fanetmini_run_dir(run_dir, image_size=32)
+    monkeypatch.setattr(predict_mod, "TEMImageNetDataset", _FakeTEMDataset)
+    monkeypatch.setattr("sys.argv", ["spectrafan.predict", "--run", str(run_dir)])
+
+    predict_mod._main()
+
+    assert (run_dir / "predictions.npz").is_file()
+    assert (run_dir / "test_metrics.json").is_file()
+
+
+def test_predict_cli_latest_resolves_against_runs_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CLI with --latest <suffix> --runs-root <dir> resolves and runs predict."""
+    from spectrafan import predict as predict_mod
+
+    run_dir = tmp_path / "2026-05-23_000000_fanetmini"
+    _write_fanetmini_run_dir(run_dir, image_size=32)
+    monkeypatch.setattr(predict_mod, "TEMImageNetDataset", _FakeTEMDataset)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "spectrafan.predict",
+            "--latest",
+            "fanetmini",
+            "--runs-root",
+            str(tmp_path),
+        ],
+    )
+
+    predict_mod._main()
+
+    assert (run_dir / "predictions.npz").is_file()

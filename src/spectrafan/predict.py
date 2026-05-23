@@ -132,3 +132,30 @@ def predict_run(run_dir: Path) -> None:
         "test_size": int(test_size),
     }
     (run_dir / "test_metrics.json").write_text(json.dumps(metrics_blob, indent=2))
+
+
+def _main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="python -m spectrafan.predict")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--run", type=Path, help="Path to a run directory.")
+    group.add_argument(
+        "--latest",
+        metavar="SUFFIX",
+        help="Resolve to the most recent runs/*_<SUFFIX>/ directory.",
+    )
+    parser.add_argument(
+        "--runs-root",
+        type=Path,
+        default=Path("runs"),
+        help="Parent dir scanned by --latest (default: runs).",
+    )
+    args = parser.parse_args()
+    run_dir = args.run if args.run is not None else find_latest_run(args.runs_root, args.latest)
+    predict_run(run_dir)
+    print(f"predict complete: {run_dir}")
+
+
+if __name__ == "__main__":
+    _main()
