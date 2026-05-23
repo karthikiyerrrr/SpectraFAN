@@ -207,3 +207,16 @@ def test_fanetmini_param_count_pinned() -> None:
         f"FANetMini param count changed: expected {expected}, got {actual}. "
         "If this is intentional, update the pinned value."
     )
+
+
+def test_package_reexports_models() -> None:
+    """`from spectrafan import FANet, FANetMini` must work for users."""
+    import spectrafan
+
+    assert hasattr(spectrafan, "FANet")
+    assert hasattr(spectrafan, "FANetMini")
+    # Identity, not just equality — these must be the same class objects.
+    from spectrafan.unet import FANet as FANet_src, FANetMini as FANetMini_src
+
+    assert spectrafan.FANet is FANet_src
+    assert spectrafan.FANetMini is FANetMini_src
