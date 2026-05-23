@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -409,3 +411,93 @@ def test_compute_summary_raises_on_empty_canonical_filter() -> None:
     # max image_size = 512, max batch_size = 32, but no row has both.
     with pytest.raises(ValueError, match="rectangular"):
         compute_summary(df)
+
+
+def _write_smoke_config(tmp_path: Path, repo_root: Path) -> Path:
+    """Write a tiny profile config that `extends` the real default.yaml via absolute path."""
+    cfg = tmp_path / "smoke_profile.yaml"
+    cfg.write_text(
+        f"""
+extends: {(repo_root / "configs" / "default.yaml").resolve()}
+
+profile:
+  warmup_iters: 1
+  measure_iters: 3
+  include_chrome_trace: false
+  configs:
+    - image_size: 32
+      batch_size: 1
+
+model:
+  channels: [8, 16]
+  bottleneck: 32
+"""
+    )
+    return cfg
+
+
+def test_cli_smoke_writes_all_artifacts(tmp_path: Path) -> None:
+    """Run the profile CLI end-to-end on CPU with a tiny config."""
+    repo_root = Path(__file__).resolve().parents[1]
+    cfg = _write_smoke_config(tmp_path, repo_root)
+    out_dir = tmp_path / "out"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "spectrafan.profile",
+            "--config",
+            str(cfg),
+            "--output",
+            str(out_dir),
+            "--device",
+            "cpu",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=repo_root,
+    )
+
+    assert result.returncode == 0, f"stderr: {result.stderr}\nstdout: {result.stdout}"
+    assert (out_dir / "config.yaml").exists()
+    assert (out_dir / "env.json").exists()
+    assert (out_dir / "timings.parquet").exists()
+    assert (out_dir / "summary.json").exists()
+    assert not (out_dir / "chrome_trace.json").exists()  # disabled by config
+
+    df = pl.read_parquet(out_dir / "timings.parquet")
+    assert df["pass"].unique().to_list() == ["fwd"]
+    summary = json.loads((out_dir / "summary.json").read_text())
+    assert summary["verdict"] in {"transform", "FLOP", "balanced"}
+
+
+def test_cli_backward_flag_emits_bwd_rows(tmp_path: Path) -> None:
+    """With --backward, the timings parquet has both fwd and bwd rows."""
+    repo_root = Path(__file__).resolve().parents[1]
+    cfg = _write_smoke_config(tmp_path, repo_root)
+    out_dir = tmp_path / "out_bwd"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "spectrafan.profile",
+            "--config",
+            str(cfg),
+            "--output",
+            str(out_dir),
+            "--device",
+            "cpu",
+            "--backward",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=repo_root,
+    )
+
+    assert result.returncode == 0, f"stderr: {result.stderr}\nstdout: {result.stdout}"
+    df = pl.read_parquet(out_dir / "timings.parquet")
+    assert set(df["pass"].unique().to_list()) == {"fwd", "bwd"}
+    bwd = df.filter(pl.col("pass") == "bwd")
+    assert bwd.filter(pl.col("category") == "total_bwd").height == 1

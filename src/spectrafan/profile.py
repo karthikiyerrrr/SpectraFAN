@@ -12,13 +12,16 @@ See docs/superpowers/specs/2026-05-22-fam-profiling-design.md for the design.
 
 from __future__ import annotations
 
+import argparse
 import json
 import platform
 import socket
 import subprocess
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
+from shutil import copyfile
 from statistics import median, pstdev
 
 import polars as pl
@@ -474,3 +477,110 @@ def write_env_json(path: Path, device: torch.device) -> None:
         "hostname": socket.gethostname(),
     }
     path.write_text(json.dumps(data, indent=2))
+
+
+def _resolve_device(name: str) -> torch.device:
+    if name == "auto":
+        if torch.cuda.is_available():
+            return torch.device("cuda")
+        if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+            return torch.device("mps")
+        return torch.device("cpu")
+    return torch.device(name)
+
+
+def _maybe_capture_chrome_trace(
+    cfg: ProfileConfig,
+    out_dir: Path,
+    device: torch.device,
+) -> None:
+    if not cfg.include_chrome_trace or not cfg.configs:
+        return
+    entry = cfg.configs[0]  # smallest config
+
+    torch.manual_seed(0)
+    model = FANet(
+        in_channels=3,
+        channels=cfg.model_channels,
+        bottleneck=cfg.model_bottleneck,
+        conv_kind=cfg.model_fam_conv_kind,
+    ).to(device)
+    model.train()
+    x = torch.randn(entry.batch_size, 3, entry.image_size, entry.image_size, device=device)
+
+    activities = [torch.profiler.ProfilerActivity.CPU]
+    if device.type == "cuda":
+        activities.append(torch.profiler.ProfilerActivity.CUDA)
+    with torch.profiler.profile(activities=activities, record_shapes=False) as prof:
+        _ = model(x)
+        if device.type == "cuda":
+            torch.cuda.synchronize()
+    prof.export_chrome_trace(str(out_dir / "chrome_trace.json"))
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="python -m spectrafan.profile")
+    parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument("--output", type=Path, default=None)
+    parser.add_argument("--backward", action="store_true")
+    parser.add_argument("--device", default="auto")
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--override", action="append", default=[])
+    args = parser.parse_args(argv)
+
+    cfg = load_profile_config(args.config, overrides=args.override)
+    device = _resolve_device(args.device)
+
+    if args.output is None:
+        ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        out_dir = Path("runs") / f"{ts}_profile"
+    else:
+        out_dir = args.output
+    out_dir.mkdir(parents=True, exist_ok=False)
+
+    # Persist resolved config + env.
+    copyfile(args.config, out_dir / "config.yaml")
+    write_env_json(out_dir / "env.json", device=device)
+
+    # Sweep.
+    frames: list[pl.DataFrame] = []
+    for entry in cfg.configs:
+        print(
+            f"[profile] image_size={entry.image_size} batch_size={entry.batch_size}",
+            flush=True,
+        )
+        df = profile_one_config(
+            image_size=entry.image_size,
+            batch_size=entry.batch_size,
+            channels=cfg.model_channels,
+            bottleneck=cfg.model_bottleneck,
+            fam_conv_kind=cfg.model_fam_conv_kind,
+            warmup_iters=cfg.warmup_iters,
+            measure_iters=cfg.measure_iters,
+            device=device,
+            seed=args.seed,
+            include_backward=args.backward,
+        )
+        frames.append(df)
+
+    timings = pl.concat(frames)
+    timings.write_parquet(out_dir / "timings.parquet")
+
+    summary = compute_summary(timings)
+    (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
+
+    _maybe_capture_chrome_trace(cfg, out_dir, device)
+
+    print(f"[profile] wrote {out_dir}", flush=True)
+    print(
+        f"[profile] verdict: FAM is {summary['verdict']}-bound "
+        f"(fams={summary['fams_pct_of_fwd']}% of fwd, "
+        f"transform={summary['transform_pct_of_fams']}% of FAM, "
+        f"branches={summary['branches_pct_of_fams']}% of FAM)",
+        flush=True,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
