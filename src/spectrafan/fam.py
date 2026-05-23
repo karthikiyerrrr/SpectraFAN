@@ -8,9 +8,6 @@ FAMComplex implements the FAM as drawn in Fig. 2(a):
 Two `conv_kind` variants are exposed behind a constructor flag so the
 depthwise-vs-depthwise-separable ambiguity in the paper can be settled by
 parameter/GFLOP calibration against Table 1.
-
-Planned siblings (not in this module): FAMReal (rfft over the half-spectrum)
-and FAMDCT (real-valued DCT-domain variant).
 """
 
 from __future__ import annotations
