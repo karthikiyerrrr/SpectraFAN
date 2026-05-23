@@ -26,12 +26,14 @@ def _(mo):
         {
             "How to reproduce a run (Colab L4/A100)": mo.md(
                 r"""
-                Create a Jupyter notebook in your Drive folder
-                `My Drive/03 Projects/02 SpectraFAN/` named `colab_full_repro.ipynb`
-                (kept out of version control on purpose). Paste these eight cells in order,
-                pick an L4 or A100 runtime, and run all. Artifacts land in
-                `My Drive/03 Projects/02 SpectraFAN/runs/<timestamp>_full_repro/`, which
-                Google Drive desktop mirrors to your laptop where this notebook reads them.
+                Create a Jupyter notebook in any Google Drive folder (e.g.
+                `My Drive/SpectraFAN/colab_full_repro.ipynb` — `colab_*.ipynb` is
+                gitignored). Paste these eight cells in order, edit `DRIVE_ROOT` in
+                cell 3 to match your Drive layout, pick an L4 or A100 runtime, and
+                run all. Artifacts land in `<DRIVE_ROOT>/runs/<timestamp>_full_repro/`.
+                Mount that Drive locally (Google Drive desktop, rclone, etc.) and
+                point this notebook at it by exporting
+                `SPECTRAFAN_RUNS_DIR=<your-drive-runs-path>` before launching marimo.
 
                 **Cell 1 (markdown):** title / one-line description.
 
@@ -44,7 +46,7 @@ def _(mo):
                 **Cell 3 (code):** anchor Drive root.
                 ```python
                 import os
-                DRIVE_ROOT = '/content/drive/MyDrive/03 Projects/02 SpectraFAN'
+                DRIVE_ROOT = '/content/drive/MyDrive/SpectraFAN'  # edit to your layout
                 os.environ['DRIVE_ROOT'] = DRIVE_ROOT
                 assert os.path.isdir(DRIVE_ROOT), f'expected Drive folder not found: {DRIVE_ROOT}'
                 ```
@@ -93,6 +95,7 @@ def _(mo):
 
 @app.cell(hide_code=True)
 def _():
+    import os
     from pathlib import Path
 
     import plotly.graph_objects as go
@@ -107,13 +110,9 @@ def _():
     from spectrafan.transforms import eval_transforms
     from spectrafan.unet import FANet
 
-    # Primary location is the in-repo runs/, mirrored from the Drive output of the Colab launcher.
-    RUNS_DIR_CANDIDATES = [
-        Path("runs"),
-        Path.home()
-        / "Library/CloudStorage/GoogleDrive-kbi102003@gmail.com/My Drive/03 Projects/02 SpectraFAN/runs",
-    ]
-    RUNS_DIR = next((p for p in RUNS_DIR_CANDIDATES if p.exists()), Path("runs"))
+    # Default to the in-repo runs/. Set SPECTRAFAN_RUNS_DIR to a Drive-synced path
+    # (or anywhere else) to inspect runs produced outside this checkout.
+    RUNS_DIR = Path(os.environ.get("SPECTRAFAN_RUNS_DIR", "runs"))
 
     return (
         DataLoader,
