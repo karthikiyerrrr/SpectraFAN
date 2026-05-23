@@ -33,7 +33,7 @@ from spectrafan.fam import ConvKind
 from spectrafan.losses import BCEDiceLoss
 from spectrafan.metrics import RunningMetrics
 from spectrafan.transforms import eval_transforms, train_transforms
-from spectrafan.unet import FANet, OutputNorm
+from spectrafan.unet import FANet, FANetMini, OutputNorm
 
 # ---------------------------------------------------------------------------
 # Config dataclasses
@@ -464,6 +464,35 @@ def _load_resume_state(
 
 
 # ---------------------------------------------------------------------------
+# Model dispatch
+# ---------------------------------------------------------------------------
+
+
+def _build_model(model_cfg: "ModelConfig") -> torch.nn.Module:
+    """Construct the model class chosen by `model_cfg.name`.
+
+    For `fanetmini`, channels and bottleneck on the config are ignored
+    (the class hardcodes them); only `output_norm` and `fam_conv_kind`
+    flow through.
+    """
+    if model_cfg.name == "fanet":
+        return FANet(
+            channels=tuple(model_cfg.channels),
+            bottleneck=model_cfg.bottleneck,
+            output_norm=model_cfg.output_norm,
+            conv_kind=model_cfg.fam_conv_kind,
+        )
+    if model_cfg.name == "fanetmini":
+        return FANetMini(
+            output_norm=model_cfg.output_norm,
+            conv_kind=model_cfg.fam_conv_kind,
+        )
+    raise ValueError(
+        f"unknown model.name: {model_cfg.name!r} (expected 'fanet' or 'fanetmini')"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Top-level fit
 # ---------------------------------------------------------------------------
 
@@ -484,12 +513,7 @@ def fit(cfg: RunConfig, config_stem: str = "run", resume_from: Path | None = Non
     train_ds, val_ds = build_datasets(cfg)
     train_loader, val_loader = build_loaders(train_ds, val_ds, cfg, device)
 
-    model = FANet(
-        channels=tuple(cfg.model.channels),
-        bottleneck=cfg.model.bottleneck,
-        output_norm=cfg.model.output_norm,
-        conv_kind=cfg.model.fam_conv_kind,
-    ).to(device)
+    model = _build_model(cfg.model).to(device)
 
     loss_fn = BCEDiceLoss(
         ce_weight=cfg.train.loss_ce_weight, dice_weight=cfg.train.loss_dice_weight
