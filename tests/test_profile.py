@@ -42,7 +42,7 @@ def test_timer_cpu_measures_positive_elapsed() -> None:
     assert t.elapsed_us > 1000  # at least 1 ms
 
 
-def test_timer_cpu_reusable_across_iterations() -> None:
+def test_timer_cpu_independent_instances_all_positive() -> None:
     device = torch.device("cpu")
     samples: list[float] = []
     for _ in range(3):
@@ -51,3 +51,16 @@ def test_timer_cpu_reusable_across_iterations() -> None:
         samples.append(t.elapsed_us)
     assert len(samples) == 3
     assert all(s > 0 for s in samples)
+
+
+def test_timer_cpu_does_not_record_elapsed_when_block_raises() -> None:
+    """If the timed block raises, elapsed_us must stay at its initial 0.0."""
+    device = torch.device("cpu")
+    t = Timer(device)
+    try:
+        with t:
+            time.sleep(0.001)
+            raise RuntimeError("boom")
+    except RuntimeError:
+        pass
+    assert t.elapsed_us == 0.0

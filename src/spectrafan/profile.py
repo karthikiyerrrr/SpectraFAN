@@ -90,7 +90,9 @@ class Timer:
             assert self._start_event is not None and self._end_event is not None
             self._end_event.record()
             torch.cuda.synchronize()
-            self.elapsed_us = self._start_event.elapsed_time(self._end_event) * 1000.0
+            if exc_type is None:
+                self.elapsed_us = self._start_event.elapsed_time(self._end_event) * 1000.0
         else:
             assert self._t0_ns is not None
-            self.elapsed_us = (time.perf_counter_ns() - self._t0_ns) / 1000.0
+            if exc_type is None:
+                self.elapsed_us = (time.perf_counter_ns() - self._t0_ns) / 1000.0
