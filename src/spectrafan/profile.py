@@ -12,6 +12,10 @@ See docs/superpowers/specs/2026-05-22-fam-profiling-design.md for the design.
 
 from __future__ import annotations
 
+import json
+import platform
+import socket
+import subprocess
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -394,3 +398,74 @@ def profile_one_config(
         )
 
     return pl.DataFrame(rows)
+
+
+def compute_summary(df: pl.DataFrame) -> dict:
+    """Boil per-row timings down to the headline verdict + percentages.
+
+    If multiple sweep configs are in `df`, picks the largest batch_size at the
+    largest image_size as the canonical config for the verdict (most realistic
+    workload).
+    """
+    canonical = df.filter(
+        (pl.col("image_size") == df["image_size"].max())
+        & (pl.col("batch_size") == df["batch_size"].max())
+    )
+    by_cat = {r["category"]: r["median_us"] for r in canonical.iter_rows(named=True)}
+    total = by_cat["total_fwd"]
+    fams = by_cat["fams_total"]
+    # Sum fft / ifft / branches across all FAMs.
+    transform = (
+        canonical.filter(pl.col("category").is_in(["fft", "ifft"]))
+        .select(pl.col("median_us").sum())
+        .item()
+    )
+    branches = (
+        canonical.filter(pl.col("category") == "branches").select(pl.col("median_us").sum()).item()
+    )
+    fams_pct = 100.0 * fams / total if total > 0 else 0.0
+    transform_pct = 100.0 * transform / fams if fams > 0 else 0.0
+    branches_pct = 100.0 * branches / fams if fams > 0 else 0.0
+    tie_threshold_pp = 5.0
+    if transform_pct - branches_pct > tie_threshold_pp:
+        verdict = "transform"
+    elif branches_pct - transform_pct > tie_threshold_pp:
+        verdict = "FLOP"
+    else:
+        verdict = "balanced"
+    return {
+        "verdict": verdict,
+        "image_size": int(canonical["image_size"][0]),
+        "batch_size": int(canonical["batch_size"][0]),
+        "fams_pct_of_fwd": round(fams_pct, 2),
+        "transform_pct_of_fams": round(transform_pct, 2),
+        "branches_pct_of_fams": round(branches_pct, 2),
+        "fams_total_us": round(fams, 2),
+        "total_fwd_us": round(total, 2),
+    }
+
+
+def write_env_json(path: Path, device: torch.device) -> None:
+    """Write a JSON snapshot of the runtime environment to `path`."""
+
+    def _safe(cmd: list[str]) -> str | None:
+        try:
+            return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip() or None
+        except (subprocess.CalledProcessError, FileNotFoundError, OSError):
+            return None
+
+    # Call once and cache to avoid three subprocess invocations for git_dirty.
+    git_porcelain = _safe(["git", "status", "--porcelain"])
+    data = {
+        "python_version": platform.python_version(),
+        "torch_version": torch.__version__,
+        "cuda_available": torch.cuda.is_available(),
+        "cuda_version": torch.version.cuda if torch.cuda.is_available() else None,
+        "device": str(device),
+        "gpu_name": (torch.cuda.get_device_name(0) if torch.cuda.is_available() else None),
+        "platform": platform.platform(),
+        "git_sha": _safe(["git", "rev-parse", "HEAD"]),
+        "git_dirty": bool(git_porcelain) if git_porcelain is not None else None,
+        "hostname": socket.gethostname(),
+    }
+    path.write_text(json.dumps(data, indent=2))

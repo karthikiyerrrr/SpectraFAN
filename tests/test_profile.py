@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 
 import polars as pl
+import pytest
 import torch
 
 from spectrafan.fam import FAMComplex
@@ -14,8 +16,10 @@ from spectrafan.profile import (
     ProfileConfig,
     ProfileSweepEntry,
     Timer,
+    compute_summary,
     load_profile_config,
     profile_one_config,
+    write_env_json,
 )
 
 EXPECTED_CATEGORIES_FWD = {
@@ -226,3 +230,118 @@ def test_profile_one_config_per_fam_decomposition_invariant() -> None:
         assert abs(row["median_us"] - parts) <= tol, (
             f"FAM decomposition broke for {mp}: total={row['median_us']} parts={parts}"
         )
+
+
+def test_compute_summary_picks_transform_when_fft_dominates(tmp_path: Path) -> None:
+    df = pl.DataFrame(
+        [
+            {
+                "image_size": 256,
+                "batch_size": 4,
+                "pass": "fwd",
+                "category": "total_fwd",
+                "module_path": None,
+                "spatial_hw": None,
+                "channels": None,
+                "n_iters": 100,
+                "mean_us": 1000.0,
+                "median_us": 1000.0,
+                "p95_us": 0,
+                "iqr_us": 0,
+                "std_us": 0,
+            },
+            {
+                "image_size": 256,
+                "batch_size": 4,
+                "pass": "fwd",
+                "category": "fams_total",
+                "module_path": None,
+                "spatial_hw": None,
+                "channels": None,
+                "n_iters": 100,
+                "mean_us": 700.0,
+                "median_us": 700.0,
+                "p95_us": 0,
+                "iqr_us": 0,
+                "std_us": 0,
+            },
+            {
+                "image_size": 256,
+                "batch_size": 4,
+                "pass": "fwd",
+                "category": "fft",
+                "module_path": "fams.0",
+                "spatial_hw": 128,
+                "channels": 64,
+                "n_iters": 100,
+                "mean_us": 300.0,
+                "median_us": 300.0,
+                "p95_us": 0,
+                "iqr_us": 0,
+                "std_us": 0,
+            },
+            {
+                "image_size": 256,
+                "batch_size": 4,
+                "pass": "fwd",
+                "category": "ifft",
+                "module_path": "fams.0",
+                "spatial_hw": 128,
+                "channels": 64,
+                "n_iters": 100,
+                "mean_us": 200.0,
+                "median_us": 200.0,
+                "p95_us": 0,
+                "iqr_us": 0,
+                "std_us": 0,
+            },
+            {
+                "image_size": 256,
+                "batch_size": 4,
+                "pass": "fwd",
+                "category": "branches",
+                "module_path": "fams.0",
+                "spatial_hw": 128,
+                "channels": 64,
+                "n_iters": 100,
+                "mean_us": 150.0,
+                "median_us": 150.0,
+                "p95_us": 0,
+                "iqr_us": 0,
+                "std_us": 0,
+            },
+            {
+                "image_size": 256,
+                "batch_size": 4,
+                "pass": "fwd",
+                "category": "final",
+                "module_path": "fams.0",
+                "spatial_hw": 128,
+                "channels": 64,
+                "n_iters": 100,
+                "mean_us": 50.0,
+                "median_us": 50.0,
+                "p95_us": 0,
+                "iqr_us": 0,
+                "std_us": 0,
+            },
+        ]
+    )
+
+    s = compute_summary(df)
+
+    # transform = (fft + ifft) / fams_total = 500 / 700 = 71.4%
+    # branches  = 150 / 700 = 21.4%   -> 50 pp gap -> transform-bound.
+    assert s["verdict"] == "transform"
+    assert s["fams_pct_of_fwd"] == pytest.approx(70.0, abs=0.1)
+    assert s["transform_pct_of_fams"] == pytest.approx(500 / 700 * 100, abs=0.1)
+
+
+def test_write_env_json_includes_torch_and_device(tmp_path: Path) -> None:
+    out = tmp_path / "env.json"
+    write_env_json(out, device=torch.device("cpu"))
+
+    data = json.loads(out.read_text())
+    assert "torch_version" in data
+    assert "cuda_available" in data
+    assert data["device"] == "cpu"
