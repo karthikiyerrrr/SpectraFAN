@@ -7,7 +7,14 @@ from pathlib import Path
 
 import torch
 
-from spectrafan.profile import ProfileConfig, ProfileSweepEntry, Timer, load_profile_config
+from spectrafan.fam import FAMComplex
+from spectrafan.profile import (
+    FAMProfiled,
+    ProfileConfig,
+    ProfileSweepEntry,
+    Timer,
+    load_profile_config,
+)
 
 
 def test_load_profile_config_reads_default_file() -> None:
@@ -64,3 +71,26 @@ def test_timer_cpu_does_not_record_elapsed_when_block_raises() -> None:
     except RuntimeError:
         pass
     assert t.elapsed_us == 0.0
+
+
+def test_famprofiled_forward_matches_unwrapped_output() -> None:
+    torch.manual_seed(0)
+    fam = FAMComplex(channels=8, conv_kind="depthwise")
+    wrapped = FAMProfiled(fam, device=torch.device("cpu"))
+
+    x = torch.randn(2, 8, 16, 16)
+    expected = fam(x)
+    actual = wrapped(x)
+
+    torch.testing.assert_close(actual, expected)
+
+
+def test_famprofiled_records_internal_timings() -> None:
+    torch.manual_seed(0)
+    fam = FAMComplex(channels=8, conv_kind="depthwise")
+    wrapped = FAMProfiled(fam, device=torch.device("cpu"))
+
+    _ = wrapped(torch.randn(2, 8, 16, 16))
+
+    assert set(wrapped.last_timings.keys()) == {"fft", "branches", "ifft", "final"}
+    assert all(v > 0 for v in wrapped.last_timings.values())

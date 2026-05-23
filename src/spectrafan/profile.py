@@ -17,9 +17,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import torch
+from torch import nn
 
 from spectrafan.configs import load_raw_config
-from spectrafan.fam import ConvKind
+from spectrafan.fam import ConvKind, FAMComplex
 
 
 @dataclass(frozen=True)
@@ -96,3 +97,40 @@ class Timer:
             assert self._t0_ns is not None
             if exc_type is None:
                 self.elapsed_us = (time.perf_counter_ns() - self._t0_ns) / 1000.0
+
+
+class FAMProfiled(nn.Module):
+    """Wraps a FAMComplex, timing fft / branches / ifft / final separately.
+
+    Mirrors FAMComplex.forward exactly so ``state_dict()`` from a trained FAM
+    can load into the wrapped instance. After each forward, ``self.last_timings``
+    holds the four per-block elapsed times in microseconds.
+    """
+
+    def __init__(self, fam: FAMComplex, device: torch.device) -> None:
+        super().__init__()
+        self.fam = fam
+        self.device = device
+        self.last_timings: dict[str, float] = {}
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        orig_dtype = x.dtype
+        with torch.amp.autocast(device_type=x.device.type, enabled=False):
+            x_fp32 = x.float()
+            with Timer(self.device) as t_fft:
+                freq = torch.fft.fft2(x_fp32)
+            with Timer(self.device) as t_branches:
+                r_prime = self.fam.branch_real(freq.real)
+                i_prime = self.fam.branch_imag(freq.imag)
+            with Timer(self.device) as t_ifft:
+                freq_hat = torch.complex(r_prime, i_prime)
+                spatial_hat = torch.fft.ifft2(freq_hat).real
+            with Timer(self.device) as t_final:
+                out = self.fam.final(x_fp32 + spatial_hat)
+        self.last_timings = {
+            "fft": t_fft.elapsed_us,
+            "branches": t_branches.elapsed_us,
+            "ifft": t_ifft.elapsed_us,
+            "final": t_final.elapsed_us,
+        }
+        return out.to(orig_dtype)
