@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from spectrafan.configs import load_raw_config
+from spectrafan.fam import ConvKind
 
 
 @dataclass(frozen=True)
@@ -33,7 +34,7 @@ class ProfileConfig:
     # Inherited from default.yaml `model:` block, used to construct FANet:
     model_channels: tuple[int, ...] = (64, 128, 256, 512)
     model_bottleneck: int = 1024
-    model_fam_conv_kind: str = "depthwise"
+    model_fam_conv_kind: ConvKind = "depthwise"
 
 
 def load_profile_config(path: Path, overrides: list[str] | None = None) -> ProfileConfig:
