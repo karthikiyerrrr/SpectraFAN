@@ -234,7 +234,7 @@ def test_profile_one_config_per_fam_decomposition_invariant() -> None:
         )
 
 
-def test_compute_summary_picks_transform_when_fft_dominates(tmp_path: Path) -> None:
+def test_compute_summary_breakdown_when_fft_dominates(tmp_path: Path) -> None:
     df = pl.DataFrame(
         [
             {
@@ -333,10 +333,11 @@ def test_compute_summary_picks_transform_when_fft_dominates(tmp_path: Path) -> N
     s = compute_summary(df)
 
     # transform = (fft + ifft) / fams_total = 500 / 700 = 71.4%
-    # branches  = 150 / 700 = 21.4%   -> 50 pp gap -> transform-bound.
-    assert s["verdict"] == "transform"
+    # branches  = 150 / 700 = 21.4%.
+    assert "verdict" not in s
     assert s["fams_pct_of_fwd"] == pytest.approx(70.0, abs=0.1)
     assert s["transform_pct_of_fams"] == pytest.approx(500 / 700 * 100, abs=0.1)
+    assert s["branches_pct_of_fams"] == pytest.approx(150 / 700 * 100, abs=0.1)
 
 
 def test_write_env_json_includes_torch_and_device(tmp_path: Path) -> None:
@@ -469,7 +470,8 @@ def test_cli_smoke_writes_all_artifacts(tmp_path: Path) -> None:
     df = pl.read_parquet(out_dir / "timings.parquet")
     assert df["pass"].unique().to_list() == ["fwd"]
     summary = json.loads((out_dir / "summary.json").read_text())
-    assert summary["verdict"] in {"transform", "flop", "balanced"}
+    assert "verdict" not in summary
+    assert "fams_pct_of_fwd" in summary
 
 
 def test_cli_backward_flag_emits_bwd_rows(tmp_path: Path) -> None:
@@ -503,8 +505,8 @@ def test_cli_backward_flag_emits_bwd_rows(tmp_path: Path) -> None:
     assert bwd.filter(pl.col("category") == "total_bwd").height == 1
 
 
-def test_compute_summary_picks_flop_when_branches_dominate() -> None:
-    """Branches > FFT + iFFT by 5pp -> verdict='flop' (lowercase)."""
+def test_compute_summary_breakdown_when_branches_dominate() -> None:
+    """Branches dominate FAM time — verify the percentage breakdown."""
     df = pl.DataFrame(
         [
             {
@@ -601,6 +603,9 @@ def test_compute_summary_picks_flop_when_branches_dominate() -> None:
     )
 
     s = compute_summary(df)
-    # transform = (50+50)/700 = 14.3%
-    # branches  = 500/700    = 71.4%   -> 57 pp gap -> verdict='flop'
-    assert s["verdict"] == "flop"
+    # transform = (50 + 50) / 700 = 14.3%
+    # branches  = 500 / 700       = 71.4%
+    assert "verdict" not in s
+    assert s["fams_pct_of_fwd"] == pytest.approx(70.0, abs=0.1)
+    assert s["transform_pct_of_fams"] == pytest.approx(100 / 700 * 100, abs=0.1)
+    assert s["branches_pct_of_fams"] == pytest.approx(500 / 700 * 100, abs=0.1)

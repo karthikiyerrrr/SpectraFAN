@@ -13,8 +13,8 @@ def _():
         # 04 — FAM per-op profiling inspector
 
         Inspect a `configs/profile.yaml` profiling run produced on Colab. Renders the
-        FAM-bound verdict, a stacked bar of forward time by category, and a per-skip
-        breakdown table.
+        FAM share of forward time, a stacked bar of forward time by category, and a
+        per-skip breakdown table.
         """
     )
     return (mo,)
@@ -141,8 +141,8 @@ def _(json, pl, run_dir):
 @app.cell
 def _(mo, summary):
     mo.md(f"""
-    **FAM is *{summary["verdict"]}*-bound.** FAMs take **{summary["fams_pct_of_fwd"]:.1f}%**
-    of forward time at ({summary["image_size"]}, {summary["batch_size"]}), split into
+    FAMs take **{summary["fams_pct_of_fwd"]:.1f}%** of forward time at
+    ({summary["image_size"]}, {summary["batch_size"]}), split into
     **{summary["transform_pct_of_fams"]:.1f}%** transform (FFT + iFFT),
     **{summary["branches_pct_of_fams"]:.1f}%** branches, and the remainder in the final
     1x1 + residual. Non-FAM stages take **{100 - summary["fams_pct_of_fwd"]:.1f}%**.

@@ -405,10 +405,10 @@ def profile_one_config(
 
 
 def compute_summary(df: pl.DataFrame) -> dict:
-    """Boil per-row timings down to the headline verdict + percentages.
+    """Boil per-row timings down to percentage shares of FAM time.
 
     If multiple sweep configs are in `df`, picks the largest batch_size at the
-    largest image_size as the canonical config for the verdict (most realistic
+    largest image_size as the canonical config for the breakdown (most realistic
     workload).
     """
     canonical = df.filter(
@@ -435,15 +435,7 @@ def compute_summary(df: pl.DataFrame) -> dict:
     fams_pct = 100.0 * fams / total if total > 0 else 0.0
     transform_pct = 100.0 * transform / fams if fams > 0 else 0.0
     branches_pct = 100.0 * branches / fams if fams > 0 else 0.0
-    tie_threshold_pp = 5.0
-    if transform_pct - branches_pct > tie_threshold_pp:
-        verdict = "transform"
-    elif branches_pct - transform_pct > tie_threshold_pp:
-        verdict = "flop"
-    else:
-        verdict = "balanced"
     return {
-        "verdict": verdict,
         "image_size": int(canonical["image_size"][0]),
         "batch_size": int(canonical["batch_size"][0]),
         "fams_pct_of_fwd": round(fams_pct, 2),
@@ -583,10 +575,9 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"[profile] wrote {out_dir}", flush=True)
     print(
-        f"[profile] verdict: FAM is {summary['verdict']}-bound "
-        f"(fams={summary['fams_pct_of_fwd']}% of fwd, "
-        f"transform={summary['transform_pct_of_fams']}% of FAM, "
-        f"branches={summary['branches_pct_of_fams']}% of FAM)",
+        f"[profile] FAM share of forward: {summary['fams_pct_of_fwd']}% "
+        f"— transform {summary['transform_pct_of_fams']}% of FAM, "
+        f"branches {summary['branches_pct_of_fams']}% of FAM",
         flush=True,
     )
     return 0
