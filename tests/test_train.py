@@ -280,7 +280,7 @@ def test_dict_to_run_config_defaults_model_name_when_omitted(tmp_path: Path) -> 
     assert cfg.model.name == "fanet"
 
 
-def testbuild_model_fanet_default() -> None:
+def test_build_model_fanet_default() -> None:
     """build_model returns a FANet instance for the default name."""
     from spectrafan.train import ModelConfig, build_model
     from spectrafan.unet import FANet, FANetMini
@@ -293,7 +293,7 @@ def testbuild_model_fanet_default() -> None:
     )
 
 
-def testbuild_model_fanetmini() -> None:
+def test_build_model_fanetmini() -> None:
     """build_model returns a FANetMini instance when name='fanetmini'."""
     from spectrafan.train import ModelConfig, build_model
     from spectrafan.unet import FANetMini
@@ -305,7 +305,7 @@ def testbuild_model_fanetmini() -> None:
     assert tuple(fam.channels for fam in model.fams) == (32, 64, 128)
 
 
-def testbuild_model_unknown_name_raises() -> None:
+def test_build_model_unknown_name_raises() -> None:
     """build_model rejects unknown model.name values with a ValueError."""
     from spectrafan.train import ModelConfig, build_model
 
@@ -314,7 +314,7 @@ def testbuild_model_unknown_name_raises() -> None:
         build_model(cfg)
 
 
-def testbuild_model_fanetmini_ignores_channels_and_bottleneck() -> None:
+def test_build_model_fanetmini_ignores_channels_and_bottleneck() -> None:
     """When name='fanetmini', cfg.channels/bottleneck are deliberately
     ignored by the dispatch (the class hardcodes them)."""
     from spectrafan.train import ModelConfig, build_model
