@@ -184,9 +184,7 @@ def _(df, go, pl):
             )
             ys.append(row["median_us"][0] if not row.is_empty() else 0.0)
         texts = [f"{y / 1000:.2f} ms" for y in ys]
-        fig_stack.add_bar(
-            name=cat, x=x_labels, y=ys, text=texts, textposition="inside"
-        )
+        fig_stack.add_bar(name=cat, x=x_labels, y=ys, text=texts, textposition="inside")
     fig_stack.update_layout(
         barmode="stack",
         title="Forward time by category (median, microseconds)",
