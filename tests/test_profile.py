@@ -345,3 +345,67 @@ def test_write_env_json_includes_torch_and_device(tmp_path: Path) -> None:
     assert "torch_version" in data
     assert "cuda_available" in data
     assert data["device"] == "cpu"
+
+
+def test_write_env_json_marks_dirty_false_in_clean_repo(tmp_path: Path, monkeypatch) -> None:
+    """A clean git working tree should write git_dirty=False, not None."""
+    import subprocess as _subproc
+
+    real_check_output = _subproc.check_output
+
+    def fake_check_output(cmd, stderr=None):
+        if cmd[:3] == ["git", "status", "--porcelain"]:
+            return b""  # clean repo
+        if cmd[:3] == ["git", "rev-parse", "HEAD"]:
+            return b"abcdef1234567890abcdef1234567890abcdef12\n"
+        return real_check_output(cmd, stderr=stderr)
+
+    monkeypatch.setattr(_subproc, "check_output", fake_check_output)
+
+    out = tmp_path / "env.json"
+    write_env_json(out, device=torch.device("cpu"))
+
+    data = json.loads(out.read_text())
+    assert data["git_dirty"] is False, f"expected False for clean repo, got {data['git_dirty']!r}"
+    assert data["git_sha"] == "abcdef1234567890abcdef1234567890abcdef12"
+
+
+def test_compute_summary_raises_on_empty_canonical_filter() -> None:
+    """Non-rectangular sweep where max(image_size) & max(batch_size) don't intersect."""
+    df = pl.DataFrame(
+        [
+            {
+                "image_size": 256,
+                "batch_size": 32,
+                "pass": "fwd",
+                "category": "total_fwd",
+                "module_path": None,
+                "spatial_hw": None,
+                "channels": None,
+                "n_iters": 100,
+                "mean_us": 1.0,
+                "median_us": 1.0,
+                "p95_us": 0,
+                "iqr_us": 0,
+                "std_us": 0,
+            },
+            {
+                "image_size": 512,
+                "batch_size": 4,
+                "pass": "fwd",
+                "category": "total_fwd",
+                "module_path": None,
+                "spatial_hw": None,
+                "channels": None,
+                "n_iters": 100,
+                "mean_us": 1.0,
+                "median_us": 1.0,
+                "p95_us": 0,
+                "iqr_us": 0,
+                "std_us": 0,
+            },
+        ]
+    )
+    # max image_size = 512, max batch_size = 32, but no row has both.
+    with pytest.raises(ValueError, match="rectangular"):
+        compute_summary(df)

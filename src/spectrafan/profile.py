@@ -411,6 +411,11 @@ def compute_summary(df: pl.DataFrame) -> dict:
         (pl.col("image_size") == df["image_size"].max())
         & (pl.col("batch_size") == df["batch_size"].max())
     )
+    if canonical.is_empty():
+        raise ValueError(
+            "No rows match max(image_size) AND max(batch_size); "
+            "check that the sweep DataFrame is rectangular."
+        )
     by_cat = {r["category"]: r["median_us"] for r in canonical.iter_rows(named=True)}
     total = by_cat["total_fwd"]
     fams = by_cat["fams_total"]
@@ -450,7 +455,7 @@ def write_env_json(path: Path, device: torch.device) -> None:
 
     def _safe(cmd: list[str]) -> str | None:
         try:
-            return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip() or None
+            return subprocess.check_output(cmd, stderr=subprocess.DEVNULL).decode().strip()
         except (subprocess.CalledProcessError, FileNotFoundError, OSError):
             return None
 
@@ -465,7 +470,7 @@ def write_env_json(path: Path, device: torch.device) -> None:
         "gpu_name": (torch.cuda.get_device_name(0) if torch.cuda.is_available() else None),
         "platform": platform.platform(),
         "git_sha": _safe(["git", "rev-parse", "HEAD"]),
-        "git_dirty": bool(git_porcelain) if git_porcelain is not None else None,
+        "git_dirty": (len(git_porcelain) > 0) if git_porcelain is not None else None,
         "hostname": socket.gethostname(),
     }
     path.write_text(json.dumps(data, indent=2))
