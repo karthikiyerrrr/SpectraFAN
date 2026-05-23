@@ -1,0 +1,13 @@
+# Per-op profiling sweep config. See docs/superpowers/specs/2026-05-22-fam-profiling-design.md.
+
+extends: default.yaml
+
+profile:
+  warmup_iters: 20
+  measure_iters: 100
+  configs:
+    - image_size: 256
+      batch_size: 4
+    - image_size: 256
+      batch_size: 16
+  include_chrome_trace: true
