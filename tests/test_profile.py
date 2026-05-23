@@ -469,7 +469,7 @@ def test_cli_smoke_writes_all_artifacts(tmp_path: Path) -> None:
     df = pl.read_parquet(out_dir / "timings.parquet")
     assert df["pass"].unique().to_list() == ["fwd"]
     summary = json.loads((out_dir / "summary.json").read_text())
-    assert summary["verdict"] in {"transform", "FLOP", "balanced"}
+    assert summary["verdict"] in {"transform", "flop", "balanced"}
 
 
 def test_cli_backward_flag_emits_bwd_rows(tmp_path: Path) -> None:
@@ -501,3 +501,106 @@ def test_cli_backward_flag_emits_bwd_rows(tmp_path: Path) -> None:
     assert set(df["pass"].unique().to_list()) == {"fwd", "bwd"}
     bwd = df.filter(pl.col("pass") == "bwd")
     assert bwd.filter(pl.col("category") == "total_bwd").height == 1
+
+
+def test_compute_summary_picks_flop_when_branches_dominate() -> None:
+    """Branches > FFT + iFFT by 5pp -> verdict='flop' (lowercase)."""
+    df = pl.DataFrame(
+        [
+            {
+                "image_size": 256,
+                "batch_size": 4,
+                "pass": "fwd",
+                "category": "total_fwd",
+                "module_path": None,
+                "spatial_hw": None,
+                "channels": None,
+                "n_iters": 100,
+                "mean_us": 1000.0,
+                "median_us": 1000.0,
+                "p95_us": 0,
+                "iqr_us": 0,
+                "std_us": 0,
+            },
+            {
+                "image_size": 256,
+                "batch_size": 4,
+                "pass": "fwd",
+                "category": "fams_total",
+                "module_path": None,
+                "spatial_hw": None,
+                "channels": None,
+                "n_iters": 100,
+                "mean_us": 700.0,
+                "median_us": 700.0,
+                "p95_us": 0,
+                "iqr_us": 0,
+                "std_us": 0,
+            },
+            {
+                "image_size": 256,
+                "batch_size": 4,
+                "pass": "fwd",
+                "category": "fft",
+                "module_path": "fams.0",
+                "spatial_hw": 128,
+                "channels": 64,
+                "n_iters": 100,
+                "mean_us": 50.0,
+                "median_us": 50.0,
+                "p95_us": 0,
+                "iqr_us": 0,
+                "std_us": 0,
+            },
+            {
+                "image_size": 256,
+                "batch_size": 4,
+                "pass": "fwd",
+                "category": "ifft",
+                "module_path": "fams.0",
+                "spatial_hw": 128,
+                "channels": 64,
+                "n_iters": 100,
+                "mean_us": 50.0,
+                "median_us": 50.0,
+                "p95_us": 0,
+                "iqr_us": 0,
+                "std_us": 0,
+            },
+            {
+                "image_size": 256,
+                "batch_size": 4,
+                "pass": "fwd",
+                "category": "branches",
+                "module_path": "fams.0",
+                "spatial_hw": 128,
+                "channels": 64,
+                "n_iters": 100,
+                "mean_us": 500.0,
+                "median_us": 500.0,
+                "p95_us": 0,
+                "iqr_us": 0,
+                "std_us": 0,
+            },
+            {
+                "image_size": 256,
+                "batch_size": 4,
+                "pass": "fwd",
+                "category": "final",
+                "module_path": "fams.0",
+                "spatial_hw": 128,
+                "channels": 64,
+                "n_iters": 100,
+                "mean_us": 100.0,
+                "median_us": 100.0,
+                "p95_us": 0,
+                "iqr_us": 0,
+                "std_us": 0,
+            },
+        ]
+    )
+
+    s = compute_summary(df)
+    # transform = (50+50)/700 = 14.3%
+    # branches  = 500/700    = 71.4%   -> 57 pp gap -> verdict='flop'
+    assert s["verdict"] == "flop"

@@ -17,6 +17,7 @@ import json
 import platform
 import socket
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -438,7 +439,7 @@ def compute_summary(df: pl.DataFrame) -> dict:
     if transform_pct - branches_pct > tie_threshold_pp:
         verdict = "transform"
     elif branches_pct - transform_pct > tie_threshold_pp:
-        verdict = "FLOP"
+        verdict = "flop"
     else:
         verdict = "balanced"
     return {
@@ -536,7 +537,16 @@ def main(argv: list[str] | None = None) -> int:
         out_dir = Path("runs") / f"{ts}_profile"
     else:
         out_dir = args.output
-    out_dir.mkdir(parents=True, exist_ok=False)
+    try:
+        out_dir.mkdir(parents=True, exist_ok=False)
+    except FileExistsError:
+        print(
+            f"[profile] error: output directory already exists: {out_dir}\n"
+            "  use a different --output path or delete the existing directory.",
+            file=sys.stderr,
+            flush=True,
+        )
+        return 1
 
     # Persist resolved config + env.
     copyfile(args.config, out_dir / "config.yaml")
