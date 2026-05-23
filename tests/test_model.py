@@ -152,3 +152,45 @@ def test_fanet_calibration_locked() -> None:
     assert _within(params, TARGET_PARAMS, TOLERANCE), (
         f"params {params / 1e6:.2f}M off target {TARGET_PARAMS / 1e6:.2f}M"
     )
+
+
+def test_fanetmini_forward_shape() -> None:
+    """FANetMini maps (B, 3, 256, 256) to (B, 1, 256, 256) logits."""
+    from spectrafan.unet import FANetMini
+
+    torch.manual_seed(0)
+    model = FANetMini()
+    model.eval()
+    x = torch.randn(1, 3, 256, 256)
+    with torch.no_grad():
+        y = model(x)
+    assert y.shape == (1, 1, 256, 256)
+    assert y.dtype == x.dtype
+    assert torch.isfinite(y).all()
+
+
+def test_fanetmini_has_three_fams_with_expected_channels() -> None:
+    """FANetMini exposes exactly three FAMs at channel widths (32, 64, 128)."""
+    from spectrafan.unet import FANetMini
+
+    model = FANetMini()
+    assert len(model.fams) == 3
+    expected_channels = (32, 64, 128)
+    actual_channels = tuple(fam.channels for fam in model.fams)
+    assert actual_channels == expected_channels, (
+        f"FANetMini FAM channel widths: expected {expected_channels}, got {actual_channels}"
+    )
+
+
+def test_fanetmini_inherits_fanet_backbone() -> None:
+    """FANetMini is a FANet subclass and reuses the same module composition."""
+    from spectrafan.unet import FANet, FANetMini
+
+    assert issubclass(FANetMini, FANet)
+    model = FANetMini()
+    # The backbone surface (encoders, decoders, bottleneck, out) must be present
+    # because they are inherited from FANet, not re-implemented.
+    assert hasattr(model, "encoders") and len(model.encoders) == 2  # 3 scales = stem + 2 encoders
+    assert hasattr(model, "decoders") and len(model.decoders) == 3
+    assert hasattr(model, "bottleneck_module")
+    assert hasattr(model, "out")

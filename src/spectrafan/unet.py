@@ -168,3 +168,29 @@ class FANet(nn.Module):
         for dec, skip in zip(self.decoders, reversed(filtered), strict=True):
             h = dec(h, skip)
         return self.out(h)
+
+
+class FANetMini(FANet):
+    """FANet sized for TEMImageNet (256x256 binary atom masks).
+
+    Encoder widths (32, 64, 128) with a 256-channel bottleneck, mirroring
+    AtomSegNet's depth/width on the same dataset. Three FAMs on the skips;
+    FAM block, encoder/decoder blocks, and output head are inherited from
+    FANet without modification.
+    """
+
+    def __init__(
+        self,
+        in_channels: int = 3,
+        conv_kind: ConvKind = "depthwise",
+        out_channels: int = 1,
+        output_norm: OutputNorm = "bn",
+    ) -> None:
+        super().__init__(
+            in_channels=in_channels,
+            channels=(32, 64, 128),
+            bottleneck=256,
+            conv_kind=conv_kind,
+            out_channels=out_channels,
+            output_norm=output_norm,
+        )
