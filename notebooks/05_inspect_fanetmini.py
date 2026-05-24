@@ -114,7 +114,7 @@ def _():
 def _(RUNS_DIR, mo):
     if RUNS_DIR.exists():
         run_dirs = sorted(
-            (p for p in RUNS_DIR.iterdir() if p.is_dir() and p.name.endswith("_fanetmini")),
+            (p for p in RUNS_DIR.iterdir() if p.is_dir() and "_fanetmini" in p.name),
             key=lambda p: p.stat().st_mtime,
             reverse=True,
         )
@@ -129,7 +129,7 @@ def _(RUNS_DIR, mo):
         run_picker
         if run_dirs
         else mo.md(
-            f"**No `_fanetmini` runs found under `{RUNS_DIR}`.** Run `colab_fanetmini.ipynb` first."
+            f"**No `fanetmini` runs found under `{RUNS_DIR}`.** Run `colab_fanetmini.ipynb` first."
         )
     )
 
