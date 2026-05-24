@@ -517,6 +517,43 @@ def build_optimizer(model: torch.nn.Module, cfg: OptimConfig) -> torch.optim.Opt
     raise ValueError(f"unknown optim.optimizer: {cfg.optimizer!r} (expected 'rmsprop' or 'adamw')")
 
 
+def build_scheduler(
+    optimizer: torch.optim.Optimizer,
+    cfg: OptimConfig,
+    total_epochs: int,
+) -> torch.optim.lr_scheduler.LRScheduler:
+    """Construct the LR scheduler chosen by `cfg.schedule`, optionally wrapped in warmup.
+
+    For `cfg.warmup_epochs > 0` the main scheduler is preceded by a LinearLR
+    warmup via SequentialLR. The cosine schedule's `T_max` is reduced by
+    `warmup_epochs` so the full cosine period still ends at `total_epochs`.
+    """
+    if cfg.warmup_epochs >= total_epochs:
+        raise ValueError(
+            f"optim.warmup_epochs ({cfg.warmup_epochs}) must be < train.epochs ({total_epochs})"
+        )
+    if cfg.schedule == "exponential":
+        main = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=cfg.decay)
+    elif cfg.schedule == "cosine":
+        main = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=total_epochs - cfg.warmup_epochs,
+            eta_min=cfg.min_lr,
+        )
+    else:
+        raise ValueError(
+            f"unknown optim.schedule: {cfg.schedule!r} (expected 'exponential' or 'cosine')"
+        )
+    if cfg.warmup_epochs <= 0:
+        return main
+    warmup = torch.optim.lr_scheduler.LinearLR(
+        optimizer, start_factor=1e-3, end_factor=1.0, total_iters=cfg.warmup_epochs
+    )
+    return torch.optim.lr_scheduler.SequentialLR(
+        optimizer, schedulers=[warmup, main], milestones=[cfg.warmup_epochs]
+    )
+
+
 # ---------------------------------------------------------------------------
 # Top-level fit
 # ---------------------------------------------------------------------------

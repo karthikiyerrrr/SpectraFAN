@@ -405,3 +405,76 @@ def test_build_optimizer_unknown_raises() -> None:
     cfg = OptimConfig(optimizer="sgd")
     with pytest.raises(ValueError, match="unknown optim.optimizer"):
         build_optimizer(model, cfg)
+
+
+def test_build_scheduler_exponential_no_warmup() -> None:
+    """schedule='exponential' with warmup_epochs=0 returns ExponentialLR directly."""
+    import torch
+
+    from spectrafan.train import OptimConfig, build_optimizer, build_scheduler
+
+    model = torch.nn.Linear(3, 1)
+    cfg = OptimConfig(optimizer="rmsprop", schedule="exponential", decay=0.95, warmup_epochs=0)
+    opt = build_optimizer(model, cfg)
+    sched = build_scheduler(opt, cfg, total_epochs=10)
+    assert isinstance(sched, torch.optim.lr_scheduler.ExponentialLR)
+    assert sched.gamma == 0.95
+
+
+def test_build_scheduler_cosine_no_warmup() -> None:
+    """schedule='cosine' with warmup_epochs=0 returns CosineAnnealingLR with correct T_max."""
+    import torch
+
+    from spectrafan.train import OptimConfig, build_optimizer, build_scheduler
+
+    model = torch.nn.Linear(3, 1)
+    cfg = OptimConfig(optimizer="adamw", schedule="cosine", warmup_epochs=0, min_lr=1.0e-6)
+    opt = build_optimizer(model, cfg)
+    sched = build_scheduler(opt, cfg, total_epochs=50)
+    assert isinstance(sched, torch.optim.lr_scheduler.CosineAnnealingLR)
+    assert sched.T_max == 50
+    assert sched.eta_min == 1.0e-6
+
+
+def test_build_scheduler_cosine_with_warmup_uses_sequentialLR() -> None:  # noqa: N802
+    """schedule='cosine' with warmup_epochs>0 wraps LinearLR + CosineAnnealingLR in SequentialLR."""
+    import torch
+
+    from spectrafan.train import OptimConfig, build_optimizer, build_scheduler
+
+    model = torch.nn.Linear(3, 1)
+    cfg = OptimConfig(optimizer="adamw", schedule="cosine", warmup_epochs=5, min_lr=1.0e-6)
+    opt = build_optimizer(model, cfg)
+    sched = build_scheduler(opt, cfg, total_epochs=50)
+    assert isinstance(sched, torch.optim.lr_scheduler.SequentialLR)
+    inner = sched._schedulers
+    assert isinstance(inner[0], torch.optim.lr_scheduler.LinearLR)
+    assert isinstance(inner[1], torch.optim.lr_scheduler.CosineAnnealingLR)
+    assert inner[1].T_max == 45  # 50 - 5 warmup
+    assert sched._milestones == [5]
+
+
+def test_build_scheduler_warmup_exceeds_epochs_raises() -> None:
+    """warmup_epochs >= total_epochs is rejected with a ValueError."""
+    import torch
+
+    from spectrafan.train import OptimConfig, build_optimizer, build_scheduler
+
+    model = torch.nn.Linear(3, 1)
+    cfg = OptimConfig(optimizer="adamw", schedule="cosine", warmup_epochs=50)
+    opt = build_optimizer(model, cfg)
+    with pytest.raises(ValueError, match="warmup_epochs"):
+        build_scheduler(opt, cfg, total_epochs=50)
+
+
+def test_build_scheduler_unknown_raises() -> None:
+    """build_scheduler rejects unknown schedule names with a ValueError."""
+    import torch
+
+    from spectrafan.train import OptimConfig, build_optimizer, build_scheduler
+
+    model = torch.nn.Linear(3, 1)
+    cfg = OptimConfig(optimizer="rmsprop", schedule="step")
+    opt = build_optimizer(model, cfg)
+    with pytest.raises(ValueError, match="unknown optim.schedule"):
+        build_scheduler(opt, cfg, total_epochs=10)
