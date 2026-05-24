@@ -478,3 +478,39 @@ def test_build_scheduler_unknown_raises() -> None:
     opt = build_optimizer(model, cfg)
     with pytest.raises(ValueError, match="unknown optim.schedule"):
         build_scheduler(opt, cfg, total_epochs=10)
+
+
+def test_fit_smoke_adamw_cosine_warmup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """fit() runs end-to-end with the AdamW+cosine+warmup bundle, produces a
+    finite metrics.parquet, AND saves an AdamW-shaped optimizer state (proves
+    fit() actually switched optimizers, not just survived the run)."""
+    ds = _SyntheticPairs()
+    import spectrafan.train as train_mod
+
+    monkeypatch.setattr(train_mod, "build_datasets", lambda _cfg: (ds, ds))
+
+    cfg = _tiny_cfg(tmp_path)
+    cfg.optim.optimizer = "adamw"
+    cfg.optim.lr = 1.0e-3  # match _tiny_cfg's tuned scale
+    cfg.optim.weight_decay = 1.0e-4
+    cfg.optim.betas = (0.9, 0.999)
+    cfg.optim.schedule = "cosine"
+    cfg.optim.warmup_epochs = 1
+    cfg.optim.min_lr = 1.0e-6
+    cfg.train.epochs = 3
+    run_dir = fit(cfg)
+
+    df = pl.read_parquet(run_dir / "metrics.parquet")
+    assert df.height == 3
+    for col in ("train_loss", "val_loss", "train_iou", "val_iou"):
+        values = df[col].to_list()
+        assert all(v == v for v in values), f"{col} has NaN: {values}"
+
+    # Prove the optimizer was actually AdamW (not RMSprop).
+    ckpt = torch.load(run_dir / "best.pt", map_location="cpu", weights_only=False)
+    state_per_param = ckpt["optimizer_state_dict"]["state"]
+    assert state_per_param, "optimizer state is empty (no steps were taken?)"
+    sample_state = next(iter(state_per_param.values()))
+    assert "exp_avg" in sample_state and "exp_avg_sq" in sample_state, (
+        f"expected AdamW state keys (exp_avg, exp_avg_sq), got {list(sample_state.keys())}"
+    )

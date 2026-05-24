@@ -580,16 +580,8 @@ def fit(cfg: RunConfig, config_stem: str = "run", resume_from: Path | None = Non
     loss_fn = BCEDiceLoss(
         ce_weight=cfg.train.loss_ce_weight, dice_weight=cfg.train.loss_dice_weight
     )
-    optimizer = torch.optim.RMSprop(
-        model.parameters(),
-        lr=cfg.optim.lr,
-        weight_decay=cfg.optim.weight_decay,
-        momentum=cfg.optim.momentum,
-    )
-    # Liu et al. 2026 Table on §3.2 lists "LR decay rate 0.99" — interpreted here as
-    # ExponentialLR γ=0.99 per epoch. RMSprop's smoothing constant `alpha` is not
-    # specified by the paper and is left at PyTorch's default (0.99 — coincidentally).
-    scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=cfg.optim.decay)
+    optimizer = build_optimizer(model, cfg.optim)
+    scheduler = build_scheduler(optimizer, cfg.optim, cfg.train.epochs)
 
     start_epoch = 0
     if resume_from is not None:
