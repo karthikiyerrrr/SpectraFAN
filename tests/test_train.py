@@ -361,3 +361,47 @@ def test_load_config_passes_new_optim_fields(tmp_path: Path) -> None:
     assert cfg.optim.schedule == "cosine"
     assert cfg.optim.warmup_epochs == 5
     assert cfg.optim.min_lr == 1.0e-6
+
+
+def test_build_optimizer_rmsprop_uses_momentum() -> None:
+    """build_optimizer returns RMSprop with the configured momentum."""
+    import torch
+
+    from spectrafan.train import OptimConfig, build_optimizer
+
+    model = torch.nn.Linear(3, 1)
+    cfg = OptimConfig(optimizer="rmsprop", lr=1.0e-5, momentum=0.99, weight_decay=1.0e-8)
+    opt = build_optimizer(model, cfg)
+    assert isinstance(opt, torch.optim.RMSprop)
+    pg = opt.param_groups[0]
+    assert pg["lr"] == 1.0e-5
+    assert pg["momentum"] == 0.99
+    assert pg["weight_decay"] == 1.0e-8
+
+
+def test_build_optimizer_adamw_uses_betas() -> None:
+    """build_optimizer returns AdamW with the configured betas."""
+    import torch
+
+    from spectrafan.train import OptimConfig, build_optimizer
+
+    model = torch.nn.Linear(3, 1)
+    cfg = OptimConfig(optimizer="adamw", lr=1.0e-4, betas=(0.9, 0.95), weight_decay=1.0e-4)
+    opt = build_optimizer(model, cfg)
+    assert isinstance(opt, torch.optim.AdamW)
+    pg = opt.param_groups[0]
+    assert pg["lr"] == 1.0e-4
+    assert pg["betas"] == (0.9, 0.95)
+    assert pg["weight_decay"] == 1.0e-4
+
+
+def test_build_optimizer_unknown_raises() -> None:
+    """build_optimizer rejects unknown optimizer names with a ValueError."""
+    import torch
+
+    from spectrafan.train import OptimConfig, build_optimizer
+
+    model = torch.nn.Linear(3, 1)
+    cfg = OptimConfig(optimizer="sgd")
+    with pytest.raises(ValueError, match="unknown optim.optimizer"):
+        build_optimizer(model, cfg)

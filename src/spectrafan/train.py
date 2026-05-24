@@ -498,6 +498,25 @@ def build_model(model_cfg: ModelConfig) -> torch.nn.Module:
     raise ValueError(f"unknown model.name: {model_cfg.name!r} (expected 'fanet' or 'fanetmini')")
 
 
+def build_optimizer(model: torch.nn.Module, cfg: OptimConfig) -> torch.optim.Optimizer:
+    """Construct the optimizer chosen by `cfg.optimizer`."""
+    if cfg.optimizer == "rmsprop":
+        return torch.optim.RMSprop(
+            model.parameters(),
+            lr=cfg.lr,
+            momentum=cfg.momentum,
+            weight_decay=cfg.weight_decay,
+        )
+    if cfg.optimizer == "adamw":
+        return torch.optim.AdamW(
+            model.parameters(),
+            lr=cfg.lr,
+            betas=cfg.betas,
+            weight_decay=cfg.weight_decay,
+        )
+    raise ValueError(f"unknown optim.optimizer: {cfg.optimizer!r} (expected 'rmsprop' or 'adamw')")
+
+
 # ---------------------------------------------------------------------------
 # Top-level fit
 # ---------------------------------------------------------------------------
