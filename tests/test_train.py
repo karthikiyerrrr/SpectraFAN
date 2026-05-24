@@ -514,3 +514,42 @@ def test_fit_smoke_adamw_cosine_warmup(tmp_path: Path, monkeypatch: pytest.Monke
     assert "exp_avg" in sample_state and "exp_avg_sq" in sample_state, (
         f"expected AdamW state keys (exp_avg, exp_avg_sq), got {list(sample_state.keys())}"
     )
+
+
+def test_fanetmini_sweep_configs_load() -> None:
+    """All three sweep configs round-trip through load_config and produce the
+    expected OptimConfig + DataConfig + loss values from the spec's sweep matrix."""
+    from spectrafan.train import load_config
+
+    cfg_b = load_config(Path("configs/fanetmini_sweep_B.yaml"))
+    assert cfg_b.model.name == "fanetmini"
+    assert cfg_b.data.batch_size == 16
+    assert cfg_b.optim.optimizer == "rmsprop"
+    assert cfg_b.optim.lr == 4.0e-5
+    assert cfg_b.optim.momentum == 0.9
+    assert cfg_b.optim.schedule == "exponential"
+    assert cfg_b.train.epochs == 50
+    assert cfg_b.train.loss_ce_weight == 0.5
+    assert cfg_b.train.loss_dice_weight == 0.5
+
+    cfg_c = load_config(Path("configs/fanetmini_sweep_C.yaml"))
+    assert cfg_c.model.name == "fanetmini"
+    assert cfg_c.data.batch_size == 16
+    assert cfg_c.optim.optimizer == "adamw"
+    assert cfg_c.optim.lr == 1.0e-4
+    assert cfg_c.optim.weight_decay == 1.0e-4
+    assert cfg_c.optim.betas == (0.9, 0.999)
+    assert cfg_c.optim.schedule == "cosine"
+    assert cfg_c.optim.warmup_epochs == 5
+    assert cfg_c.optim.min_lr == 1.0e-6
+    assert cfg_c.train.epochs == 50
+    assert cfg_c.train.loss_ce_weight == 0.5
+    assert cfg_c.train.loss_dice_weight == 0.5
+
+    cfg_d = load_config(Path("configs/fanetmini_sweep_D.yaml"))
+    assert cfg_d.model.name == "fanetmini"
+    assert cfg_d.optim.optimizer == "adamw"
+    assert cfg_d.optim.schedule == "cosine"
+    assert cfg_d.optim.warmup_epochs == 5
+    assert cfg_d.train.loss_ce_weight == 0.3
+    assert cfg_d.train.loss_dice_weight == 0.7

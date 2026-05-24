@@ -1,0 +1,19 @@
+# FANetMini sweep config C (OFAT step 2: switch optimizer family to AdamW + cosine + warmup).
+# Tests whether the modern segmentation optimizer bundle breaks the plateau.
+
+extends: fanetmini.yaml
+
+data:
+  batch_size: 16
+
+optim:
+  optimizer: adamw
+  lr: 1.0e-4                  # standard AdamW segmentation LR
+  weight_decay: 1.0e-4        # AdamW default (1e-8 is RMSprop-style and inappropriate)
+  betas: [0.9, 0.999]
+  schedule: cosine
+  warmup_epochs: 5            # standard warmup; T_max becomes (50 - 5) = 45
+  min_lr: 1.0e-6              # cosine floor to avoid LR touching zero
+
+train:
+  epochs: 50

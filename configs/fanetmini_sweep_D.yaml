@@ -1,0 +1,16 @@
+# FANetMini sweep config D (OFAT step 3: C + Dice-heavier loss weighting).
+# Tests whether Dice-weighted loss further pushes past the BCE-anchored optimum.
+#
+# NOTE: extends: resolves only one level, so model.name must be repeated here
+# (fanetmini_sweep_C.yaml inherits it from fanetmini.yaml, but that second hop
+# is not followed when D is loaded).
+
+extends: fanetmini_sweep_C.yaml
+
+model:
+  name: fanetmini
+
+train:
+  loss:
+    ce_weight: 0.3
+    dice_weight: 0.7
