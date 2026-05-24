@@ -71,11 +71,15 @@ class AugConfig:
 
 @dataclass
 class OptimConfig:
-    optimizer: str = "rmsprop"
+    optimizer: str = "rmsprop"  # rmsprop | adamw
     lr: float = 1.0e-5
-    decay: float = 0.99
+    decay: float = 0.99  # ExponentialLR gamma
     weight_decay: float = 1.0e-8
-    momentum: float = 0.999
+    momentum: float = 0.999  # rmsprop only
+    betas: tuple[float, float] = (0.9, 0.999)  # adamw only
+    schedule: str = "exponential"  # exponential | cosine
+    warmup_epochs: int = 0  # 0 disables warmup
+    min_lr: float = 0.0  # CosineAnnealingLR eta_min
 
 
 @dataclass
@@ -145,6 +149,10 @@ def _dict_to_run_config(d: dict) -> RunConfig:
         decay=optim_raw.get("decay", OptimConfig.decay),
         weight_decay=optim_raw.get("weight_decay", OptimConfig.weight_decay),
         momentum=optim_raw.get("momentum", OptimConfig.momentum),
+        betas=tuple(optim_raw.get("betas", OptimConfig.betas)),
+        schedule=optim_raw.get("schedule", OptimConfig.schedule),
+        warmup_epochs=optim_raw.get("warmup_epochs", OptimConfig.warmup_epochs),
+        min_lr=optim_raw.get("min_lr", OptimConfig.min_lr),
     )
     train_raw = d.get("train", {}) or {}
     loss_raw = train_raw.get("loss", {}) or {}

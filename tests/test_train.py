@@ -324,3 +324,40 @@ def test_build_model_fanetmini_ignores_channels_and_bottleneck() -> None:
     assert tuple(fam.channels for fam in model.fams) == (32, 64, 128), (
         "FANetMini must hardcode (32, 64, 128); cfg.channels must be ignored"
     )
+
+
+def test_optim_config_new_field_defaults() -> None:
+    """The 4 new OptimConfig fields default to backward-compatible values."""
+    from spectrafan.train import OptimConfig
+
+    cfg = OptimConfig()
+    assert cfg.betas == (0.9, 0.999)
+    assert cfg.schedule == "exponential"
+    assert cfg.warmup_epochs == 0
+    assert cfg.min_lr == 0.0
+
+
+def test_load_config_passes_new_optim_fields(tmp_path: Path) -> None:
+    """load_config round-trips all 4 new optim fields from YAML into OptimConfig."""
+    from spectrafan.train import load_config
+
+    cfg_path = tmp_path / "test.yaml"
+    cfg_path.write_text(
+        "data:\n  splits_dir: data/splits/temimagenet_v1\n"
+        "optim:\n"
+        "  optimizer: adamw\n"
+        "  lr: 1.0e-4\n"
+        "  weight_decay: 1.0e-4\n"
+        "  betas: [0.9, 0.95]\n"
+        "  schedule: cosine\n"
+        "  warmup_epochs: 5\n"
+        "  min_lr: 1.0e-6\n"
+    )
+    cfg = load_config(cfg_path)
+    assert cfg.optim.optimizer == "adamw"
+    assert cfg.optim.lr == 1.0e-4
+    assert cfg.optim.weight_decay == 1.0e-4
+    assert cfg.optim.betas == (0.9, 0.95)
+    assert cfg.optim.schedule == "cosine"
+    assert cfg.optim.warmup_epochs == 5
+    assert cfg.optim.min_lr == 1.0e-6
