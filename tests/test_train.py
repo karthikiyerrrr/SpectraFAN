@@ -206,6 +206,21 @@ def test_set_global_seed_enables_determinism() -> None:
     assert torch.are_deterministic_algorithms_enabled()
 
 
+def test_set_global_seed_deterministic_false_enables_benchmark() -> None:
+    """set_global_seed(deterministic=False) turns OFF the deterministic flag
+    and turns ON cudnn.benchmark (the speed-trading path used by sweep configs).
+    Restore deterministic mode afterwards so it doesn't leak across tests."""
+    from spectrafan.train import set_global_seed
+
+    try:
+        set_global_seed(0, deterministic=False)
+        assert not torch.are_deterministic_algorithms_enabled()
+        assert torch.backends.cudnn.benchmark is True
+        assert torch.backends.cudnn.deterministic is False
+    finally:
+        set_global_seed(0, deterministic=True)
+
+
 def test_full_repro_config_loads() -> None:
     """configs/full_repro.yaml loads cleanly and carries the locked recipe values."""
     from spectrafan.train import load_config
@@ -531,6 +546,7 @@ def test_fanetmini_sweep_configs_load() -> None:
     assert cfg_b.optim.schedule == "exponential"
     assert cfg_b.train.epochs == 50
     assert cfg_b.train.amp is True
+    assert cfg_b.train.deterministic is False
     assert cfg_b.train.loss_ce_weight == 0.5
     assert cfg_b.train.loss_dice_weight == 0.5
 
@@ -547,6 +563,7 @@ def test_fanetmini_sweep_configs_load() -> None:
     assert cfg_c.optim.min_lr == 1.0e-6
     assert cfg_c.train.epochs == 50
     assert cfg_c.train.amp is True
+    assert cfg_c.train.deterministic is False
     assert cfg_c.train.loss_ce_weight == 0.5
     assert cfg_c.train.loss_dice_weight == 0.5
 
@@ -557,5 +574,6 @@ def test_fanetmini_sweep_configs_load() -> None:
     assert cfg_d.optim.schedule == "cosine"
     assert cfg_d.optim.warmup_epochs == 5
     assert cfg_d.train.amp is True  # inherited from C
+    assert cfg_d.train.deterministic is False  # inherited from C
     assert cfg_d.train.loss_ce_weight == 0.3
     assert cfg_d.train.loss_dice_weight == 0.7

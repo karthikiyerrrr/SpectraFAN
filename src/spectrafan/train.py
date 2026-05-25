@@ -92,6 +92,12 @@ class TrainConfig:
     loss_dice_weight: float = 0.5
     amp: bool = False
     checkpoint_every: int = 10
+    # When False, skips the determinism flags in set_global_seed (enables
+    # cudnn.benchmark, drops use_deterministic_algorithms). Trades bitwise
+    # seed reproducibility for ~5-20x conv kernel speedup on shape/dtype
+    # combinations where deterministic algorithms are slow. Default True
+    # preserves the locked-reproduction behavior.
+    deterministic: bool = True
 
 
 @dataclass
@@ -165,6 +171,7 @@ def _dict_to_run_config(d: dict) -> RunConfig:
         loss_dice_weight=loss_raw.get("dice_weight", TrainConfig.loss_dice_weight),
         amp=train_raw.get("amp", TrainConfig.amp),
         checkpoint_every=train_raw.get("checkpoint_every", TrainConfig.checkpoint_every),
+        deterministic=train_raw.get("deterministic", TrainConfig.deterministic),
     )
     return RunConfig(model=model, data=data, aug=aug, optim=optim_cfg, train=train_cfg)
 
@@ -184,7 +191,14 @@ def resolve_device(name: str) -> torch.device:
     return torch.device(name)
 
 
-def set_global_seed(seed: int) -> None:
+def set_global_seed(seed: int, deterministic: bool = True) -> None:
+    """Seed all RNGs and (optionally) enable deterministic CUDA kernels.
+
+    When `deterministic=False`, cudnn.benchmark is turned on and the global
+    deterministic-algorithm flag is turned off — trades bitwise reproducibility
+    for ~5-20x conv kernel speedup on shape/dtype combos where deterministic
+    kernels are slow (a real bottleneck for FANetMini at BS>=16).
+    """
     import random
 
     import numpy as np
@@ -194,16 +208,21 @@ def set_global_seed(seed: int) -> None:
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
-    # Best-effort; not fully deterministic on MPS.
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
-    # CUBLAS_WORKSPACE_CONFIG is required by torch.use_deterministic_algorithms on CUDA;
-    # without it, cuBLAS matmul ops raise RuntimeError that warn_only does NOT silence.
-    # setdefault respects any pre-existing override from the user's shell.
-    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
-    # warn_only=True so ops without deterministic kernels (e.g. some interpolations)
-    # don't crash training; the warning still surfaces the nondeterminism.
-    torch.use_deterministic_algorithms(True, warn_only=True)
+    if deterministic:
+        # Best-effort; not fully deterministic on MPS.
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
+        # CUBLAS_WORKSPACE_CONFIG is required by torch.use_deterministic_algorithms on CUDA;
+        # without it, cuBLAS matmul ops raise RuntimeError that warn_only does NOT silence.
+        # setdefault respects any pre-existing override from the user's shell.
+        os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+        # warn_only=True so ops without deterministic kernels (e.g. some interpolations)
+        # don't crash training; the warning still surfaces the nondeterminism.
+        torch.use_deterministic_algorithms(True, warn_only=True)
+    else:
+        torch.backends.cudnn.deterministic = False
+        torch.backends.cudnn.benchmark = True
+        torch.use_deterministic_algorithms(False)
 
 
 def _capture_env(device: torch.device, amp_enabled: bool) -> dict:
@@ -635,7 +654,7 @@ def build_scheduler(
 
 
 def fit(cfg: RunConfig, config_stem: str = "run", resume_from: Path | None = None) -> Path:
-    set_global_seed(cfg.train.seed)
+    set_global_seed(cfg.train.seed, deterministic=cfg.train.deterministic)
     device = resolve_device(cfg.train.device)
 
     if resume_from is not None:

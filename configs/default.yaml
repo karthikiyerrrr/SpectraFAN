@@ -38,6 +38,7 @@ train:
   seed: 0
   device: auto                 # auto | cuda | mps | cpu
   run_root: runs
+  deterministic: true          # set false in sweep configs to enable cudnn.benchmark (faster kernels, no bitwise repro)
   loss:
     ce_weight: 0.5
     dice_weight: 0.5

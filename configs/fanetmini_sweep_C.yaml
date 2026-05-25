@@ -19,3 +19,4 @@ optim:
 train:
   epochs: 50
   amp: true                   # bf16 autocast on A100 (no GradScaler needed); ~free throughput win
+  deterministic: false        # cudnn.benchmark on; ~5-20x conv kernel speedup at BS=16
