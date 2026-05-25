@@ -5,6 +5,7 @@ extends: fanetmini.yaml
 
 data:
   batch_size: 16
+  num_workers: 8              # FANetMini is tiny on A100; default 2 starves the GPU at BS=16
 
 optim:
   lr: 4.0e-5                  # linear-scaled from default 1.0e-5 with 4x BS
@@ -12,3 +13,4 @@ optim:
 
 train:
   epochs: 50                  # short-budget sweep; full 200 reserved for the winner
+  amp: true                   # bf16 autocast on A100 (no GradScaler needed); ~free throughput win
