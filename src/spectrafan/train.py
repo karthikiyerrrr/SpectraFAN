@@ -350,6 +350,45 @@ def _autocast_ctx(amp_enabled: bool, device: torch.device) -> contextlib.Abstrac
     return contextlib.nullcontext()
 
 
+_TRAIN_PROFILE_ENV = "SPECTRAFAN_TRAIN_PROFILE"
+
+
+def _train_profile_enabled() -> bool:
+    """Opt-in via env var; on for epoch 1 only, zero overhead when off."""
+    return os.environ.get(_TRAIN_PROFILE_ENV, "0") not in ("0", "", "false", "False")
+
+
+def _sync(device: torch.device) -> None:
+    """torch.cuda.synchronize() on CUDA, no-op otherwise. Required around
+    timers because launches are async — without sync we'd time queue depth,
+    not actual work."""
+    if device.type == "cuda":
+        torch.cuda.synchronize()
+
+
+class _PhaseTimer:
+    """Context manager that prints `[profile] <name>=<sec>s` on exit. No-op
+    when enabled=False, so callers can wrap unconditionally."""
+
+    def __init__(self, name: str, enabled: bool, device: torch.device) -> None:
+        self.name = name
+        self.enabled = enabled
+        self.device = device
+        self.t0 = 0.0
+
+    def __enter__(self) -> _PhaseTimer:
+        if self.enabled:
+            _sync(self.device)
+            self.t0 = time.perf_counter()
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        if self.enabled:
+            _sync(self.device)
+            dt = time.perf_counter() - self.t0
+            print(f"  [profile] {self.name}={dt:.2f}s", flush=True)
+
+
 def train_one_epoch(
     model: torch.nn.Module,
     loader: DataLoader,
@@ -357,12 +396,23 @@ def train_one_epoch(
     optimizer: torch.optim.Optimizer,
     device: torch.device,
     amp_enabled: bool = False,
+    *,
+    profile: bool = False,
 ) -> dict[str, float]:
     model.train()
     rm = RunningMetrics()
     loss_sum = 0.0
     n_batches = 0
+    data_wait_s: list[float] = []
+    fwd_bwd_s: list[float] = []
+    step_s: list[float] = []
+    t_prev = time.perf_counter()  # always defined; only read+used when profile is on
     for image, mask in loader:
+        if profile:
+            _sync(device)
+            t_now = time.perf_counter()
+            data_wait_s.append(t_now - t_prev)
+            t_prev = t_now
         image = image.to(device, non_blocking=True)
         mask = mask.to(device, non_blocking=True)
         optimizer.zero_grad(set_to_none=True)
@@ -371,10 +421,35 @@ def train_one_epoch(
             loss = loss_fn(logits, mask)
         logits = logits.float()
         loss.backward()
+        if profile:
+            _sync(device)
+            t_now = time.perf_counter()
+            fwd_bwd_s.append(t_now - t_prev)
+            t_prev = t_now
         optimizer.step()
+        if profile:
+            _sync(device)
+            t_now = time.perf_counter()
+            step_s.append(t_now - t_prev)
+            t_prev = t_now
         loss_sum += loss.item()
         n_batches += 1
         rm.update(logits, mask)
+    if profile:
+        from statistics import median as _med
+
+        for name, samples in (
+            ("data_wait", data_wait_s),
+            ("fwd_bwd", fwd_bwd_s),
+            ("optim_step", step_s),
+        ):
+            if samples:
+                print(
+                    f"  [profile] train/{name}: "
+                    f"median={_med(samples) * 1000:.1f}ms "
+                    f"total={sum(samples):.1f}s n={len(samples)}",
+                    flush=True,
+                )
     metrics = rm.compute()
     return {"loss": loss_sum / max(n_batches, 1), **metrics}
 
@@ -596,22 +671,30 @@ def fit(cfg: RunConfig, config_stem: str = "run", resume_from: Path | None = Non
     for epoch in range(start_epoch, cfg.train.epochs):
         t0 = time.perf_counter()
         lr_this_epoch = optimizer.param_groups[0]["lr"]
-        train_stats = train_one_epoch(
-            model,
-            train_loader,
-            loss_fn,
-            optimizer,
-            device,
-            amp_enabled=cfg.train.amp,
-        )
-        val_stats = validate(
-            model,
-            val_loader,
-            loss_fn,
-            device,
-            amp_enabled=cfg.train.amp,
-        )
-        scheduler.step()
+        # Profile epoch 1 only (relative to the start of this fit call) when
+        # SPECTRAFAN_TRAIN_PROFILE=1 — captures per-phase wall-clock breakdown
+        # to diagnose what's actually slow.
+        profile_this_epoch = _train_profile_enabled() and epoch == start_epoch
+        with _PhaseTimer("train_loop", profile_this_epoch, device):
+            train_stats = train_one_epoch(
+                model,
+                train_loader,
+                loss_fn,
+                optimizer,
+                device,
+                amp_enabled=cfg.train.amp,
+                profile=profile_this_epoch,
+            )
+        with _PhaseTimer("val_loop", profile_this_epoch, device):
+            val_stats = validate(
+                model,
+                val_loader,
+                loss_fn,
+                device,
+                amp_enabled=cfg.train.amp,
+            )
+        with _PhaseTimer("scheduler_step", profile_this_epoch, device):
+            scheduler.step()
 
         row = {
             "epoch": epoch,
@@ -626,7 +709,8 @@ def fit(cfg: RunConfig, config_stem: str = "run", resume_from: Path | None = Non
             "val_dice": val_stats["dice"],
             "val_px_acc": val_stats["px_acc"],
         }
-        writer.append(row)
+        with _PhaseTimer("metrics_parquet_write", profile_this_epoch, device):
+            writer.append(row)
         print(
             f"epoch {epoch + 1:>3d}/{cfg.train.epochs}  "
             f"train_iou={train_stats['iou']:.4f}  val_iou={val_stats['iou']:.4f}  "
@@ -634,25 +718,28 @@ def fit(cfg: RunConfig, config_stem: str = "run", resume_from: Path | None = Non
             f"lr={lr_this_epoch:.2e}  wall={row['wall_sec']:.1f}s",
             flush=True,
         )
-        _save_checkpoint(
-            run_dir / "last.pt", model, optimizer, scheduler, epoch, val_stats["iou"], cfg
-        )
+        with _PhaseTimer("save_last_pt", profile_this_epoch, device):
+            _save_checkpoint(
+                run_dir / "last.pt", model, optimizer, scheduler, epoch, val_stats["iou"], cfg
+            )
         # Save an immortal snapshot every checkpoint_every epochs. 1-indexed in
         # the filename for human readability; 0-indexed in code.
         if (epoch + 1) % cfg.train.checkpoint_every == 0:
-            _save_checkpoint(
-                run_dir / f"epoch_{epoch + 1:03d}.pt",
-                model,
-                optimizer,
-                scheduler,
-                epoch,
-                val_stats["iou"],
-                cfg,
-            )
+            with _PhaseTimer("save_epoch_pt", profile_this_epoch, device):
+                _save_checkpoint(
+                    run_dir / f"epoch_{epoch + 1:03d}.pt",
+                    model,
+                    optimizer,
+                    scheduler,
+                    epoch,
+                    val_stats["iou"],
+                    cfg,
+                )
         if val_stats["iou"] > best_val_iou:
-            _save_checkpoint(
-                run_dir / "best.pt", model, optimizer, scheduler, epoch, val_stats["iou"], cfg
-            )
+            with _PhaseTimer("save_best_pt", profile_this_epoch, device):
+                _save_checkpoint(
+                    run_dir / "best.pt", model, optimizer, scheduler, epoch, val_stats["iou"], cfg
+                )
             best_val_iou = val_stats["iou"]
 
     return run_dir
