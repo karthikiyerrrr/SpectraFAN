@@ -159,3 +159,57 @@ def test_dataset_subset_size_truncates(tmp_path: Path) -> None:
         subset_size=3,
     )
     assert len(ds) == 3
+
+
+def test_temimagenet_dataset_per_image_zscore_normalizes(tmp_path: Path) -> None:
+    """input_norm='per_image_zscore' yields zero-mean, unit-variance per image."""
+    from spectrafan.data import TEMImageNetDataset
+
+    image_dir = tmp_path / "image"
+    mask_dir = tmp_path / "circularMask"
+    splits_dir = tmp_path / "splits"
+    splits_dir.mkdir()
+    # write a non-uniform grayscale image so std > 0
+    for stem in ("00001",):
+        path = image_dir / f"{stem}.png"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        arr = np.tile(np.linspace(0, 255, 16, dtype=np.uint8), (16, 1))
+        Image.fromarray(arr).save(path)
+        _write_png(mask_dir / f"{stem}.png", size=(16, 16))
+    (splits_dir / "train.txt").write_text("00001\n")
+
+    ds = TEMImageNetDataset(
+        root=tmp_path,
+        split="train",
+        image_size=16,
+        splits_dir=splits_dir,
+        input_norm="per_image_zscore",
+    )
+    img, _ = ds[0]
+    assert torch.isfinite(img).all()
+    # per-image z-score: each channel of the replicated tensor is the same image, so
+    # the per-image stats are identical across channels. Check overall.
+    assert abs(img.mean().item()) < 1e-5
+    assert abs(img.std().item() - 1.0) < 1e-3
+
+
+def test_temimagenet_dataset_input_norm_default_is_none(tmp_path: Path) -> None:
+    """Default input_norm preserves baseline behavior: image stays in [0, 1]."""
+    from spectrafan.data import TEMImageNetDataset
+
+    image_dir = tmp_path / "image"
+    mask_dir = tmp_path / "circularMask"
+    splits_dir = tmp_path / "splits"
+    splits_dir.mkdir()
+    _write_png(image_dir / "00001.png")
+    _write_png(mask_dir / "00001.png")
+    (splits_dir / "train.txt").write_text("00001\n")
+
+    ds = TEMImageNetDataset(
+        root=tmp_path,
+        split="train",
+        image_size=8,
+        splits_dir=splits_dir,
+    )
+    img, _ = ds[0]
+    assert 0.0 <= img.min().item() and img.max().item() <= 1.0

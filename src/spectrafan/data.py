@@ -144,6 +144,7 @@ def load_split(splits_dir: Path, name: str) -> list[str]:
 # ---------------------------------------------------------------------------
 
 Split = Literal["train", "val", "test"]
+InputNorm = Literal["none", "per_image_zscore"]
 Transform = Callable[[torch.Tensor, torch.Tensor], tuple[torch.Tensor, torch.Tensor]]
 
 
@@ -198,12 +199,14 @@ class TEMImageNetDataset(Dataset):
         splits_dir: Path = Path("data/splits/temimagenet_v1"),
         transforms: Transform | None = None,
         subset_size: int | None = None,
+        input_norm: InputNorm = "none",
     ) -> None:
         super().__init__()
         self.root = Path(root)
         self.split = split
         self.image_size = image_size
         self.transforms = transforms
+        self.input_norm = input_norm
 
         stems = load_split(Path(splits_dir), split)
         if subset_size is not None:
@@ -232,6 +235,11 @@ class TEMImageNetDataset(Dataset):
             )
         image_np = _center_crop_or_resize(image_np, self.image_size)
         mask_np = _center_crop_or_resize_mask(mask_np, self.image_size)
+
+        if self.input_norm == "per_image_zscore":
+            mean = float(image_np.mean())
+            std = float(image_np.std())
+            image_np = (image_np - mean) / (std + 1e-6)
 
         # image_np is float32 in [0, 1]; replicate to 3 channels for FANet's RGB stem.
         image = torch.from_numpy(image_np).float().unsqueeze(0).repeat(3, 1, 1)  # (3, H, W)
