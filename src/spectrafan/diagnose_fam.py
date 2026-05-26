@@ -24,6 +24,7 @@ from torch.utils.data import DataLoader
 from spectrafan.data import TEMImageNetDataset
 from spectrafan.fam import FAMComplex
 from spectrafan.metrics import RunningMetrics
+from spectrafan.predict import find_latest_run
 from spectrafan.train import build_model, load_config, resolve_device
 from spectrafan.transforms import eval_transforms
 
@@ -246,3 +247,30 @@ def _run_val_once(model: torch.nn.Module, loader: DataLoader, device: torch.devi
             yb = yb.to(device)
             rm.update(model(xb), yb)
     return float(rm.compute()["iou"])
+
+
+def _main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(prog="python -m spectrafan.diagnose_fam")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--run", type=Path, help="Path to a run directory.")
+    group.add_argument(
+        "--latest",
+        metavar="SUFFIX",
+        help="Resolve to the most recent runs/*_<SUFFIX>/ directory.",
+    )
+    parser.add_argument(
+        "--runs-root",
+        type=Path,
+        default=Path("runs"),
+        help="Parent dir scanned by --latest (default: runs).",
+    )
+    args = parser.parse_args()
+    run_dir = args.run if args.run is not None else find_latest_run(args.runs_root, args.latest)
+    diagnose_run(run_dir)
+    print(f"diagnose complete: {run_dir}")
+
+
+if __name__ == "__main__":
+    _main()

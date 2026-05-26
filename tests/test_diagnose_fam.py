@@ -361,3 +361,70 @@ def test_diagnose_run_works_for_fanet_too(tmp_path: Path, monkeypatch: pytest.Mo
     assert set(df["scale_idx"].to_list()) == {0, 1, 2, 3}  # FANet has 4 FAMs
     blob = json.loads((run_dir / "fam_diagnosis.json").read_text())
     assert blob["n_fam_modules"] == 4
+
+
+def test_cli_requires_run_or_latest(monkeypatch: pytest.MonkeyPatch) -> None:
+    """argparse rejects invocation with neither --run nor --latest."""
+    from spectrafan import diagnose_fam as diag_mod
+
+    monkeypatch.setattr("sys.argv", ["spectrafan.diagnose_fam"])
+    with pytest.raises(SystemExit):
+        diag_mod._main()
+
+
+def test_cli_rejects_both_run_and_latest(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """argparse rejects invocation with both --run and --latest (mutually exclusive)."""
+    from spectrafan import diagnose_fam as diag_mod
+
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "spectrafan.diagnose_fam",
+            "--run",
+            str(tmp_path),
+            "--latest",
+            "fanetmini",
+        ],
+    )
+    with pytest.raises(SystemExit):
+        diag_mod._main()
+
+
+def test_cli_runs_diagnose_with_run_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """CLI with --run <path> invokes diagnose_run on that path."""
+    from spectrafan import diagnose_fam as diag_mod
+
+    run_dir = tmp_path / "2026-05-25_000000_fanetmini"
+    _write_fanetmini_run_dir(run_dir)
+    monkeypatch.setattr(diag_mod, "TEMImageNetDataset", _FakeTEMDataset)
+    monkeypatch.setattr("sys.argv", ["spectrafan.diagnose_fam", "--run", str(run_dir)])
+
+    diag_mod._main()
+
+    assert (run_dir / "fam_stats.parquet").is_file()
+    assert (run_dir / "fam_diagnosis.json").is_file()
+
+
+def test_cli_latest_resolves_against_runs_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CLI with --latest <suffix> --runs-root <dir> resolves and runs diagnose."""
+    from spectrafan import diagnose_fam as diag_mod
+
+    run_dir = tmp_path / "2026-05-25_000000_fanetmini"
+    _write_fanetmini_run_dir(run_dir)
+    monkeypatch.setattr(diag_mod, "TEMImageNetDataset", _FakeTEMDataset)
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "spectrafan.diagnose_fam",
+            "--latest",
+            "fanetmini",
+            "--runs-root",
+            str(tmp_path),
+        ],
+    )
+
+    diag_mod._main()
+
+    assert (run_dir / "fam_stats.parquet").is_file()
