@@ -11,7 +11,9 @@ CLI:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
+from types import MethodType
 
 import torch
 
@@ -35,3 +37,19 @@ def _patched_forward_skip_fft(self: FAMComplex, x: torch.Tensor) -> torch.Tensor
 def _patched_forward_zero(self: FAMComplex, x: torch.Tensor) -> torch.Tensor:
     """Pure identity — bounds the contribution of the entire FAM block."""
     return x
+
+
+def _apply_forward(
+    model: torch.nn.Module, fn: Callable[[FAMComplex, torch.Tensor], torch.Tensor]
+) -> None:
+    """Bind `fn` as the .forward of every FAMComplex module in `model`."""
+    for module in model.modules():
+        if isinstance(module, FAMComplex):
+            module.forward = MethodType(fn, module)
+
+
+def _restore_forward(model: torch.nn.Module) -> None:
+    """Restore the original FAMComplex.forward on every FAMComplex in `model`."""
+    for module in model.modules():
+        if isinstance(module, FAMComplex):
+            module.forward = MethodType(FAMComplex.forward, module)
