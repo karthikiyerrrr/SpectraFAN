@@ -28,7 +28,7 @@ import torch
 import yaml
 from torch.utils.data import DataLoader, Dataset
 
-from spectrafan.data import TEMImageNetDataset
+from spectrafan.data import InputNorm, TEMImageNetDataset
 from spectrafan.fam import ConvKind
 from spectrafan.losses import BCEDiceLoss
 from spectrafan.metrics import RunningMetrics
@@ -59,7 +59,7 @@ class DataConfig:
     val_subset_size: int | None = None
     splits_dir: Path = Path("data/splits/temimagenet_v1")
     num_workers: int = 2
-    input_norm: str = "none"  # "none" | "per_image_zscore"
+    input_norm: InputNorm = "none"
     in_channels: int = 3  # 1 | 3
 
 
