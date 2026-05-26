@@ -1,0 +1,27 @@
+# Adapted track E3: batch size 4 -> 16, num_workers 2 -> 8, AMP on.
+# E1 (output_norm=none) and E2 (AdamW+cosine+warmup) both REVERTED — neither
+# moved val_iou past threshold. E3 stacks on baseline, not on E2.
+#
+# Hypothesis: at BS=4, BN running statistics are noisy and per-step gradient
+# SNR is low. BS=16 gives ~4x cleaner BN stats and a sqrt(4)x SNR boost on
+# gradients. This tests a different mechanism (statistics / gradient quality)
+# from E1 (BN location) and E2 (optimizer), so it's an independent probe of
+# the plateau.
+#
+# AMP is required to keep the BS=16 memory footprint inside A100 headroom;
+# E1 already established AMP is not a driver of IoU shifts.
+#
+# NOTE: extends default.yaml directly (the loader only resolves one level).
+
+extends: default.yaml
+
+model:
+  name: fanetmini
+
+data:
+  batch_size: 16
+  num_workers: 8
+
+train:
+  epochs: 50
+  amp: true
