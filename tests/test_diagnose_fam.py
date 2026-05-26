@@ -168,3 +168,20 @@ def test_collector_values_are_finite() -> None:
     assert 0.0 <= row["branch_real_dead_rate"] <= 1.0
     assert 0.0 <= row["branch_imag_dead_rate"] <= 1.0
     assert 0.0 <= row["fft_real_dc_share"] <= 1.0
+
+
+def test_run_val_once_returns_iou_in_unit_interval() -> None:
+    """_run_val_once runs the model once over the loader and returns val_iou in [0, 1]."""
+    from torch.utils.data import DataLoader, TensorDataset
+
+    from spectrafan.diagnose_fam import _run_val_once
+    from spectrafan.unet import FANetMini
+
+    images = torch.rand(8, 3, 32, 32)
+    masks = (images.mean(1, keepdim=True) > 0.5).float()
+    loader = DataLoader(TensorDataset(images, masks), batch_size=4)
+
+    model = FANetMini()
+    iou = _run_val_once(model, loader, device=torch.device("cpu"))
+    assert isinstance(iou, float)
+    assert 0.0 <= iou <= 1.0

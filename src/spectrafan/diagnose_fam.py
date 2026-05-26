@@ -17,8 +17,10 @@ from pathlib import Path
 from types import MethodType
 
 import torch
+from torch.utils.data import DataLoader
 
 from spectrafan.fam import FAMComplex
+from spectrafan.metrics import RunningMetrics
 
 
 def diagnose_run(run_dir: Path) -> None:
@@ -149,3 +151,15 @@ def _make_instrumented_forward(
         return out.to(orig_dtype)
 
     return _forward
+
+
+def _run_val_once(model: torch.nn.Module, loader: DataLoader, device: torch.device) -> float:
+    """One forward pass over `loader`; returns val_iou as a float."""
+    rm = RunningMetrics()
+    model.eval()
+    with torch.no_grad():
+        for xb, yb in loader:
+            xb = xb.to(device)
+            yb = yb.to(device)
+            rm.update(model(xb), yb)
+    return float(rm.compute()["iou"])
