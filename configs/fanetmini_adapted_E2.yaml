@@ -1,0 +1,30 @@
+# Adapted track E2: AdamW + cosine + warmup, replacing RMSprop + ExpLR.
+# E1 (output_norm=none) was REVERTED — IoU difference vs baseline was inside
+# the val_iou epoch-to-epoch noise floor. See
+# runs/2026-05-26_190219_fanetmini_adapted_E1/notes.md.
+#
+# Hypothesis: RMSprop @ lr=1e-5 + ExpLR(gamma=0.99) + momentum=0.999 stalls
+# the optimizer (train_loss flatlines at ~0.12 from epoch ~30 onward in both
+# baseline and E1). AdamW lr=1e-3 with a 5-epoch linear warmup and cosine
+# decay to min_lr=1e-5 is the standard modern segmentation recipe; weight
+# decay raised from RMSprop's 1e-8 to AdamW's 1e-4.
+#
+# NOTE: extends default.yaml directly (the loader only resolves one level).
+
+extends: default.yaml
+
+model:
+  name: fanetmini
+
+optim:
+  optimizer: adamw
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  betas: [0.9, 0.999]
+  schedule: cosine
+  warmup_epochs: 5
+  min_lr: 1.0e-5
+
+train:
+  epochs: 50
+  amp: true
