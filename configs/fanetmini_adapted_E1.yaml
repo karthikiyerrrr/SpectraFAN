@@ -1,0 +1,11 @@
+# Adapted track E1: drop BatchNorm from the 1-channel output head.
+# Hypothesis: BN on the final 1-channel logit corrupts calibration through
+# noisy BS=4 batch statistics at train time and noisy running stats at eval.
+
+extends: fanetmini.yaml
+
+model:
+  output_norm: none
+
+train:
+  epochs: 50
