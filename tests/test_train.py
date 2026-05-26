@@ -593,15 +593,39 @@ def test_data_config_accepts_input_norm_and_in_channels() -> None:
 
 
 def test_load_config_threads_input_norm_and_in_channels(tmp_path: Path) -> None:
-    """YAML config -> RunConfig wires input_norm and in_channels through."""
-    from spectrafan.train import load_config
+    """YAML config -> RunConfig -> TEMImageNetDataset wires both options through end-to-end."""
+    from spectrafan.train import build_datasets, load_config
+
+    # Set up a minimal but valid dataset root so build_datasets can construct it.
+    data_root = tmp_path / "data_root"
+    (data_root / "image").mkdir(parents=True)
+    (data_root / "circularMask").mkdir(parents=True)
+    splits_dir = tmp_path / "splits"
+    splits_dir.mkdir()
+    for stem in ("00001",):
+        from PIL import Image as _PILImage
+
+        _PILImage.new("L", (8, 8), color=128).save(data_root / "image" / f"{stem}.png")
+        _PILImage.new("L", (8, 8), color=255).save(data_root / "circularMask" / f"{stem}.png")
+    (splits_dir / "train.txt").write_text("00001\n")
+    (splits_dir / "val.txt").write_text("00001\n")
 
     cfg_path = tmp_path / "cfg.yaml"
     cfg_path.write_text(
         "data:\n"
+        f"  root: {data_root}\n"
+        f"  splits_dir: {splits_dir}\n"
+        "  image_size: 8\n"
         "  input_norm: per_image_zscore\n"
         "  in_channels: 1\n"
     )
     cfg = load_config(cfg_path)
     assert cfg.data.input_norm == "per_image_zscore"
     assert cfg.data.in_channels == 1
+
+    # Verify the values actually reach TEMImageNetDataset, not just DataConfig.
+    train_ds, val_ds = build_datasets(cfg)
+    assert train_ds.input_norm == "per_image_zscore"
+    assert train_ds.in_channels == 1
+    assert val_ds.input_norm == "per_image_zscore"
+    assert val_ds.in_channels == 1

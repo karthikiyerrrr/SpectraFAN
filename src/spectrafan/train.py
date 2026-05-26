@@ -22,6 +22,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 import polars as pl
 import torch
@@ -60,7 +61,7 @@ class DataConfig:
     splits_dir: Path = Path("data/splits/temimagenet_v1")
     num_workers: int = 2
     input_norm: InputNorm = "none"
-    in_channels: int = 3  # 1 | 3
+    in_channels: Literal[1, 3] = 3
 
 
 @dataclass
