@@ -80,3 +80,91 @@ def test_apply_forward_touches_every_fam() -> None:
             assert fam.forward.__func__ is _patched_forward_zero
     finally:
         _restore_forward(model)
+
+
+def test_collector_starts_empty_and_records_per_call() -> None:
+    """Each instrumented forward call appends one row tagged with the FAM's scale_idx."""
+    from spectrafan.diagnose_fam import (
+        _FamStatsCollector,
+        _make_instrumented_forward,
+    )
+
+    fam = FAMComplex(channels=8)
+    collector = _FamStatsCollector()
+    instrumented = _make_instrumented_forward(collector, scale_idx=1)
+
+    x = torch.randn(2, 8, 16, 16)
+    out = instrumented(fam, x)
+
+    assert out.shape == x.shape
+    assert len(collector.rows) == 1
+    row = collector.rows[0]
+    expected_cols = {
+        "scale_idx",
+        "batch_idx",
+        "input_norm",
+        "contribution_norm",
+        "output_norm",
+        "branch_real_out_norm",
+        "branch_imag_out_norm",
+        "branch_real_dead_rate",
+        "branch_imag_dead_rate",
+        "fft_real_dc_share",
+        "fft_real_p99_to_median",
+    }
+    assert set(row) == expected_cols
+    assert row["scale_idx"] == 1
+    assert row["batch_idx"] == 0  # first call
+
+
+def test_collector_increments_batch_idx_within_scale() -> None:
+    """Subsequent calls on the same scale advance batch_idx; different scales have their own counters."""
+    from spectrafan.diagnose_fam import _FamStatsCollector, _make_instrumented_forward
+
+    fam = FAMComplex(channels=8)
+    collector = _FamStatsCollector()
+    forward_s0 = _make_instrumented_forward(collector, scale_idx=0)
+    forward_s1 = _make_instrumented_forward(collector, scale_idx=1)
+
+    x = torch.randn(2, 8, 16, 16)
+    forward_s0(fam, x)
+    forward_s0(fam, x)
+    forward_s1(fam, x)
+
+    by_scale = {(r["scale_idx"], r["batch_idx"]) for r in collector.rows}
+    assert by_scale == {(0, 0), (0, 1), (1, 0)}
+
+
+def test_instrumented_forward_matches_original() -> None:
+    """Instrumented output equals the original FAMComplex.forward output."""
+    from spectrafan.diagnose_fam import _FamStatsCollector, _make_instrumented_forward
+
+    fam = FAMComplex(channels=8)
+    collector = _FamStatsCollector()
+    instrumented = _make_instrumented_forward(collector, scale_idx=0)
+
+    x = torch.randn(2, 8, 16, 16)
+    expected = fam.forward(x)  # original, unbound at this point
+    actual = instrumented(fam, x)
+    assert torch.allclose(actual, expected, atol=1e-5)
+
+
+def test_collector_values_are_finite() -> None:
+    """All recorded stats are finite floats in plausible ranges."""
+    import math
+
+    from spectrafan.diagnose_fam import _FamStatsCollector, _make_instrumented_forward
+
+    fam = FAMComplex(channels=8)
+    collector = _FamStatsCollector()
+    instrumented = _make_instrumented_forward(collector, scale_idx=0)
+    instrumented(fam, torch.randn(2, 8, 16, 16))
+
+    row = collector.rows[0]
+    for k, v in row.items():
+        if k in ("scale_idx", "batch_idx"):
+            continue
+        assert math.isfinite(v), f"{k} is not finite: {v}"
+    assert 0.0 <= row["branch_real_dead_rate"] <= 1.0
+    assert 0.0 <= row["branch_imag_dead_rate"] <= 1.0
+    assert 0.0 <= row["fft_real_dc_share"] <= 1.0
