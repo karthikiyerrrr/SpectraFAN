@@ -1,0 +1,32 @@
+# Adapted track E4: per-image z-score input normalization + single-channel input.
+# E1 (output_norm=none), E2 (AdamW+cosine+warmup), and E3 (BS=16) all REVERTED
+# — three consecutive recipe-knob no-ops on val_iou. Pivoting to a data
+# representation change.
+#
+# Hypothesis: TEMImageNet's grayscale crystal images are loaded as
+# 3-channel uint8 [0, 255] with no normalization (input_norm=none). The
+# stem convolution and the FAM both have to learn input scale, and the
+# 3-channel replication is pure waste. Per-image z-score normalization
+# stabilizes the input distribution across samples (different acquisition
+# contrasts no longer look like different domains to the network), and
+# in_channels=1 cuts the stem conv's input params 3x.
+#
+# Stacked on baseline (RMSprop@1e-5 + ExpLR γ=0.99 + BS=4), not on E1/E2/E3.
+# Code prereqs: src/spectrafan/data.py:InputNorm + TEMImageNetDataset(input_norm,
+# in_channels) and src/spectrafan/train.py:DataConfig + build_model threading
+# landed on main before E1 ran.
+#
+# NOTE: extends default.yaml directly (the loader only resolves one level).
+
+extends: default.yaml
+
+model:
+  name: fanetmini
+
+data:
+  input_norm: per_image_zscore
+  in_channels: 1
+
+train:
+  epochs: 50
+  amp: true
