@@ -53,7 +53,7 @@ def diagnose_run(run_dir: Path) -> None:
         raise FileNotFoundError(f"missing best.pt in run dir: {run_dir}")
     ckpt = torch.load(best_path, map_location=device, weights_only=False)
 
-    model = build_model(cfg.model).to(device)
+    model = build_model(cfg.model, cfg.data).to(device)
     model.load_state_dict(ckpt["model_state_dict"])
 
     val_ds = TEMImageNetDataset(

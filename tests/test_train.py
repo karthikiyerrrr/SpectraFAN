@@ -297,11 +297,11 @@ def test_dict_to_run_config_defaults_model_name_when_omitted(tmp_path: Path) -> 
 
 def test_build_model_fanet_default() -> None:
     """build_model returns a FANet instance for the default name."""
-    from spectrafan.train import ModelConfig, build_model
+    from spectrafan.train import DataConfig, ModelConfig, build_model
     from spectrafan.unet import FANet, FANetMini
 
     cfg = ModelConfig()  # name defaults to "fanet"
-    model = build_model(cfg)
+    model = build_model(cfg, DataConfig())
     assert isinstance(model, FANet)
     assert not isinstance(model, FANetMini), (
         "ModelConfig() with default name=fanet must NOT return a FANetMini"
@@ -310,11 +310,11 @@ def test_build_model_fanet_default() -> None:
 
 def test_build_model_fanetmini() -> None:
     """build_model returns a FANetMini instance when name='fanetmini'."""
-    from spectrafan.train import ModelConfig, build_model
+    from spectrafan.train import DataConfig, ModelConfig, build_model
     from spectrafan.unet import FANetMini
 
     cfg = ModelConfig(name="fanetmini")
-    model = build_model(cfg)
+    model = build_model(cfg, DataConfig())
     assert isinstance(model, FANetMini)
     # FANetMini hardcodes its widths regardless of cfg.channels/bottleneck.
     assert tuple(fam.channels for fam in model.fams) == (32, 64, 128)
@@ -322,20 +322,20 @@ def test_build_model_fanetmini() -> None:
 
 def test_build_model_unknown_name_raises() -> None:
     """build_model rejects unknown model.name values with a ValueError."""
-    from spectrafan.train import ModelConfig, build_model
+    from spectrafan.train import DataConfig, ModelConfig, build_model
 
     cfg = ModelConfig(name="not-a-real-model")
     with pytest.raises(ValueError, match="unknown model.name"):
-        build_model(cfg)
+        build_model(cfg, DataConfig())
 
 
 def test_build_model_fanetmini_ignores_channels_and_bottleneck() -> None:
     """When name='fanetmini', cfg.channels/bottleneck are deliberately
     ignored by the dispatch (the class hardcodes them)."""
-    from spectrafan.train import ModelConfig, build_model
+    from spectrafan.train import DataConfig, ModelConfig, build_model
 
     cfg = ModelConfig(name="fanetmini", channels=(99, 99, 99, 99), bottleneck=99)
-    model = build_model(cfg)
+    model = build_model(cfg, DataConfig())
     assert tuple(fam.channels for fam in model.fams) == (32, 64, 128), (
         "FANetMini must hardcode (32, 64, 128); cfg.channels must be ignored"
     )
@@ -577,3 +577,31 @@ def test_fanetmini_sweep_configs_load() -> None:
     assert cfg_d.train.deterministic is False  # inherited from C
     assert cfg_d.train.loss_ce_weight == 0.3
     assert cfg_d.train.loss_dice_weight == 0.7
+
+
+def test_data_config_accepts_input_norm_and_in_channels() -> None:
+    """DataConfig holds input_norm and in_channels with backward-compatible defaults."""
+    from spectrafan.train import DataConfig
+
+    cfg = DataConfig()
+    assert cfg.input_norm == "none"
+    assert cfg.in_channels == 3
+
+    cfg2 = DataConfig(input_norm="per_image_zscore", in_channels=1)
+    assert cfg2.input_norm == "per_image_zscore"
+    assert cfg2.in_channels == 1
+
+
+def test_load_config_threads_input_norm_and_in_channels(tmp_path: Path) -> None:
+    """YAML config -> RunConfig wires input_norm and in_channels through."""
+    from spectrafan.train import load_config
+
+    cfg_path = tmp_path / "cfg.yaml"
+    cfg_path.write_text(
+        "data:\n"
+        "  input_norm: per_image_zscore\n"
+        "  in_channels: 1\n"
+    )
+    cfg = load_config(cfg_path)
+    assert cfg.data.input_norm == "per_image_zscore"
+    assert cfg.data.in_channels == 1

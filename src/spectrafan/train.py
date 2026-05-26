@@ -59,6 +59,8 @@ class DataConfig:
     val_subset_size: int | None = None
     splits_dir: Path = Path("data/splits/temimagenet_v1")
     num_workers: int = 2
+    input_norm: str = "none"  # "none" | "per_image_zscore"
+    in_channels: int = 3  # 1 | 3
 
 
 @dataclass
@@ -140,6 +142,8 @@ def _dict_to_run_config(d: dict) -> RunConfig:
         val_subset_size=data_raw.get("val_subset_size", None),
         splits_dir=Path(data_raw.get("splits_dir", DataConfig.splits_dir)),
         num_workers=data_raw.get("num_workers", DataConfig.num_workers),
+        input_norm=data_raw.get("input_norm", DataConfig.input_norm),
+        in_channels=data_raw.get("in_channels", DataConfig.in_channels),
     )
     aug_raw = d.get("aug", {}) or {}
     aug = AugConfig(
@@ -291,6 +295,8 @@ def build_datasets(cfg: RunConfig) -> tuple[Dataset, Dataset]:
             noise_sigma=cfg.aug.noise_sigma,
         ),
         subset_size=cfg.data.subset_size,
+        input_norm=cfg.data.input_norm,
+        in_channels=cfg.data.in_channels,
     )
     val_ds = TEMImageNetDataset(
         root=cfg.data.root,
@@ -299,6 +305,8 @@ def build_datasets(cfg: RunConfig) -> tuple[Dataset, Dataset]:
         splits_dir=cfg.data.splits_dir,
         transforms=eval_transforms(),
         subset_size=cfg.data.val_subset_size,
+        input_norm=cfg.data.input_norm,
+        in_channels=cfg.data.in_channels,
     )
     return train_ds, val_ds
 
@@ -570,15 +578,17 @@ def _load_resume_state(
 # ---------------------------------------------------------------------------
 
 
-def build_model(model_cfg: ModelConfig) -> torch.nn.Module:
+def build_model(model_cfg: ModelConfig, data_cfg: DataConfig) -> torch.nn.Module:
     """Construct the model class chosen by `model_cfg.name`.
 
     For `fanetmini`, channels and bottleneck on the config are ignored
     (the class hardcodes them); only `output_norm` and `fam_conv_kind`
-    flow through.
+    flow through. `data_cfg.in_channels` threads the input channel count
+    through both variants so 1-channel STEM inputs are supported.
     """
     if model_cfg.name == "fanet":
         return FANet(
+            in_channels=data_cfg.in_channels,
             channels=tuple(model_cfg.channels),
             bottleneck=model_cfg.bottleneck,
             output_norm=model_cfg.output_norm,
@@ -586,6 +596,7 @@ def build_model(model_cfg: ModelConfig) -> torch.nn.Module:
         )
     if model_cfg.name == "fanetmini":
         return FANetMini(
+            in_channels=data_cfg.in_channels,
             output_norm=model_cfg.output_norm,
             conv_kind=model_cfg.fam_conv_kind,
         )
@@ -669,7 +680,7 @@ def fit(cfg: RunConfig, config_stem: str = "run", resume_from: Path | None = Non
     train_ds, val_ds = build_datasets(cfg)
     train_loader, val_loader = build_loaders(train_ds, val_ds, cfg, device)
 
-    model = build_model(cfg.model).to(device)
+    model = build_model(cfg.model, cfg.data).to(device)
 
     loss_fn = BCEDiceLoss(
         ce_weight=cfg.train.loss_ce_weight, dice_weight=cfg.train.loss_dice_weight

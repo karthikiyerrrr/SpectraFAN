@@ -221,3 +221,17 @@ def test_package_reexports_models() -> None:
 
     assert spectrafan.FANet is FANet_src
     assert spectrafan.FANetMini is FANetMini_src
+
+
+def test_fanetmini_accepts_in_channels_one() -> None:
+    """FANetMini builds with in_channels=1 and forward-passes (1, 1, 256, 256) inputs."""
+    from spectrafan.unet import FANetMini
+
+    torch.manual_seed(0)
+    model = FANetMini(in_channels=1)
+    model.eval()
+    x = torch.randn(1, 1, 256, 256)
+    with torch.no_grad():
+        y = model(x)
+    assert y.shape == (1, 1, 256, 256)
+    assert torch.isfinite(y).all()
