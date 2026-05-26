@@ -200,6 +200,7 @@ class TEMImageNetDataset(Dataset):
         transforms: Transform | None = None,
         subset_size: int | None = None,
         input_norm: InputNorm = "none",
+        in_channels: int = 3,
     ) -> None:
         super().__init__()
         self.root = Path(root)
@@ -207,6 +208,9 @@ class TEMImageNetDataset(Dataset):
         self.image_size = image_size
         self.transforms = transforms
         self.input_norm = input_norm
+        if in_channels not in (1, 3):
+            raise ValueError(f"in_channels must be 1 or 3; got {in_channels}")
+        self.in_channels = in_channels
 
         stems = load_split(Path(splits_dir), split)
         if subset_size is not None:
@@ -242,7 +246,9 @@ class TEMImageNetDataset(Dataset):
             image_np = (image_np - mean) / (std + 1e-6)
 
         # image_np is float32 in [0, 1]; replicate to 3 channels for FANet's RGB stem.
-        image = torch.from_numpy(image_np).float().unsqueeze(0).repeat(3, 1, 1)  # (3, H, W)
+        image = torch.from_numpy(image_np).float().unsqueeze(0)  # (1, H, W)
+        if self.in_channels == 3:
+            image = image.repeat(3, 1, 1)  # (3, H, W)
         # mask_np is uint8 in {0, 1}; cast to float32 for BCE loss.
         mask = torch.from_numpy(mask_np).float().unsqueeze(0)  # (1, H, W)
 

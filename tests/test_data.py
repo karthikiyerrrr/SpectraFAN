@@ -213,3 +213,48 @@ def test_temimagenet_dataset_input_norm_default_is_none(tmp_path: Path) -> None:
     )
     img, _ = ds[0]
     assert 0.0 <= img.min().item() and img.max().item() <= 1.0
+
+
+def test_temimagenet_dataset_in_channels_one_returns_single_channel(tmp_path: Path) -> None:
+    """in_channels=1 returns a (1, H, W) image without replicating to 3 channels."""
+    from spectrafan.data import TEMImageNetDataset
+
+    image_dir = tmp_path / "image"
+    mask_dir = tmp_path / "circularMask"
+    splits_dir = tmp_path / "splits"
+    splits_dir.mkdir()
+    _write_png(image_dir / "00001.png")
+    _write_png(mask_dir / "00001.png")
+    (splits_dir / "train.txt").write_text("00001\n")
+
+    ds = TEMImageNetDataset(
+        root=tmp_path,
+        split="train",
+        image_size=8,
+        splits_dir=splits_dir,
+        in_channels=1,
+    )
+    img, _ = ds[0]
+    assert img.shape == (1, 8, 8)
+
+
+def test_temimagenet_dataset_in_channels_default_three(tmp_path: Path) -> None:
+    """Default in_channels=3 preserves baseline behavior (replication to 3 channels)."""
+    from spectrafan.data import TEMImageNetDataset
+
+    image_dir = tmp_path / "image"
+    mask_dir = tmp_path / "circularMask"
+    splits_dir = tmp_path / "splits"
+    splits_dir.mkdir()
+    _write_png(image_dir / "00001.png")
+    _write_png(mask_dir / "00001.png")
+    (splits_dir / "train.txt").write_text("00001\n")
+
+    ds = TEMImageNetDataset(
+        root=tmp_path,
+        split="train",
+        image_size=8,
+        splits_dir=splits_dir,
+    )
+    img, _ = ds[0]
+    assert img.shape == (3, 8, 8)
