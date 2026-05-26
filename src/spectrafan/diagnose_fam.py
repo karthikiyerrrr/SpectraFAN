@@ -11,21 +11,104 @@ CLI:
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MethodType
 
+import polars as pl
 import torch
 from torch.utils.data import DataLoader
 
+from spectrafan.data import TEMImageNetDataset
 from spectrafan.fam import FAMComplex
 from spectrafan.metrics import RunningMetrics
+from spectrafan.train import build_model, load_config, resolve_device
+from spectrafan.transforms import eval_transforms
 
 
 def diagnose_run(run_dir: Path) -> None:
-    """Placeholder; filled in by later tasks."""
-    raise NotImplementedError
+    """Emit fam_stats.parquet + fam_diagnosis.json into `run_dir`.
+
+    Runs the val split three times — as_trained (with instrumented forward
+    that captures per-FAM stats), fam_skip_fft, fam_zero — and writes the
+    summary to disk. Refuses to overwrite existing outputs.
+    """
+    parquet_path = run_dir / "fam_stats.parquet"
+    json_path = run_dir / "fam_diagnosis.json"
+    for p in (parquet_path, json_path):
+        if p.is_file():
+            raise FileExistsError(
+                f"refusing to overwrite existing diagnostic output: {p}. "
+                "Delete it or pick a different run."
+            )
+
+    cfg = load_config(run_dir / "config.yaml")
+    device = resolve_device(cfg.train.device)
+
+    best_path = run_dir / "best.pt"
+    if not best_path.is_file():
+        raise FileNotFoundError(f"missing best.pt in run dir: {run_dir}")
+    ckpt = torch.load(best_path, map_location=device, weights_only=False)
+
+    model = build_model(cfg.model).to(device)
+    model.load_state_dict(ckpt["model_state_dict"])
+
+    val_ds = TEMImageNetDataset(
+        root=cfg.data.root,
+        split="val",
+        image_size=cfg.data.image_size,
+        splits_dir=cfg.data.splits_dir,
+        transforms=eval_transforms(),
+    )
+    loader = DataLoader(val_ds, batch_size=cfg.data.batch_size, shuffle=False, num_workers=0)
+
+    fams = [m for m in model.modules() if isinstance(m, FAMComplex)]
+    n_fam = len(fams)
+
+    # Pass 1: as_trained with instrumentation.
+    collector = _FamStatsCollector()
+    try:
+        for scale_idx, fam in enumerate(fams):
+            fam.forward = MethodType(_make_instrumented_forward(collector, scale_idx), fam)
+        val_iou_as_trained = _run_val_once(model, loader, device)
+    finally:
+        _restore_forward(model)
+
+    # Pass 2: fam_skip_fft.
+    try:
+        _apply_forward(model, _patched_forward_skip_fft)
+        val_iou_skip = _run_val_once(model, loader, device)
+    finally:
+        _restore_forward(model)
+
+    # Pass 3: fam_zero.
+    try:
+        _apply_forward(model, _patched_forward_zero)
+        val_iou_zero = _run_val_once(model, loader, device)
+    finally:
+        _restore_forward(model)
+
+    pl.DataFrame(collector.rows).write_parquet(parquet_path)
+    json_path.write_text(
+        json.dumps(
+            {
+                "run_dir": str(run_dir),
+                "checkpoint": "best.pt",
+                "epoch": int(ckpt["epoch"]) + 1,
+                "val_iou": {
+                    "as_trained": val_iou_as_trained,
+                    "fam_skip_fft": val_iou_skip,
+                    "fam_zero": val_iou_zero,
+                },
+                "n_val_batches": len(loader),
+                "n_fam_modules": n_fam,
+                "stats_path": "fam_stats.parquet",
+            },
+            indent=2,
+        )
+    )
 
 
 def _patched_forward_skip_fft(self: FAMComplex, x: torch.Tensor) -> torch.Tensor:
