@@ -9,3 +9,5 @@ model:
 
 train:
   epochs: 50
+  amp: true            # match the baseline run (runs/2026-05-23_235101_fanetmini) which trained with bf16 autocast on A100
+
