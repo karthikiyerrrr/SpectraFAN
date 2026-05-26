@@ -17,7 +17,6 @@ def _():
         emitted by `spectrafan.diagnose_fam` — no local inference.
         """
     )
-
     return (mo,)
 
 
@@ -27,13 +26,11 @@ def _():
     import os
     from pathlib import Path
 
-    import plotly.express as px
     import plotly.graph_objects as go
     import polars as pl
 
     RUNS_DIR = Path(os.environ.get("SPECTRAFAN_RUNS_DIR", "runs"))
-
-    return RUNS_DIR, go, json, pl, px
+    return RUNS_DIR, go, json, pl
 
 
 @app.cell(hide_code=True)
@@ -59,7 +56,6 @@ def _(RUNS_DIR, mo):
             "`uv run python -m spectrafan.diagnose_fam --latest fanetmini` first."
         )
     )
-
     return run_dirs, run_picker
 
 
@@ -68,14 +64,13 @@ def _(mo, run_dirs, run_picker):
     mo.stop(not run_dirs, mo.md("_Waiting for a diagnosed run to be available._"))
     run_dir = run_picker.value
     mo.md(f"**Active run:** `{run_dir.name}`")
-
     return (run_dir,)
 
 
 @app.cell(hide_code=True)
 def _(json, mo, run_dir):
     blob = json.loads((run_dir / "fam_diagnosis.json").read_text())
-    iou = blob["val_iou"]
+    _iou = blob["val_iou"]
     mo.md(
         f"""
         ### Counterfactual val_iou
@@ -84,12 +79,11 @@ def _(json, mo, run_dir):
 
         | mode | val_iou | delta vs as_trained |
         | --- | ---: | ---: |
-        | `as_trained` | **{iou["as_trained"]:.4f}** | — |
-        | `fam_skip_fft` | {iou["fam_skip_fft"]:.4f} | {iou["fam_skip_fft"] - iou["as_trained"]:+.4f} |
-        | `fam_zero` | {iou["fam_zero"]:.4f} | {iou["fam_zero"] - iou["as_trained"]:+.4f} |
+        | `as_trained` | **{_iou["as_trained"]:.4f}** | — |
+        | `fam_skip_fft` | {_iou["fam_skip_fft"]:.4f} | {_iou["fam_skip_fft"] - _iou["as_trained"]:+.4f} |
+        | `fam_zero` | {_iou["fam_zero"]:.4f} | {_iou["fam_zero"] - _iou["as_trained"]:+.4f} |
         """
     )
-
     return (blob,)
 
 
@@ -97,35 +91,37 @@ def _(json, mo, run_dir):
 def _(pl, run_dir):
     stats_df = pl.read_parquet(run_dir / "fam_stats.parquet")
     stats_df
-
     return (stats_df,)
 
 
 @app.cell(hide_code=True)
-def _(pl, px, stats_df):
-    ratio = stats_df.with_columns(
+def _(go, pl, stats_df):
+    _ratio = stats_df.with_columns(
         (pl.col("contribution_norm") / pl.col("input_norm")).alias("contribution_ratio")
     )
-    fig = px.box(
-        ratio.to_pandas(),
-        x="scale_idx",
-        y="contribution_ratio",
-        points="all",
+    _fig = go.Figure()
+    for _scale in sorted(set(_ratio["scale_idx"].to_list())):
+        _sub = _ratio.filter(pl.col("scale_idx") == _scale)
+        _fig.add_box(
+            y=_sub["contribution_ratio"].to_list(),
+            name=f"scale {_scale}",
+            boxpoints="all",
+            pointpos=0,
+        )
+    _fig.add_hline(y=0.1, line_dash="dash", annotation_text="0.1 (rule-of-thumb healthy)")
+    _fig.update_layout(
         title="FFT pathway contribution norm / input norm, by scale",
-        labels={
-            "scale_idx": "FAM scale (0=shallow)",
-            "contribution_ratio": "||spatial_hat|| / ||x||",
-        },
+        xaxis_title="FAM scale (0=shallow)",
+        yaxis_title="||spatial_hat|| / ||x||",
+        showlegend=False,
     )
-    fig.add_hline(y=0.1, line_dash="dash", annotation_text="0.1 (rule-of-thumb healthy)")
-    fig
-
+    _fig
     return
 
 
 @app.cell(hide_code=True)
 def _(go, pl, stats_df):
-    medians = (
+    _medians = (
         stats_df.group_by("scale_idx")
         .agg(
             [
@@ -135,89 +131,97 @@ def _(go, pl, stats_df):
         )
         .sort("scale_idx")
     )
-    scales = medians["scale_idx"].to_list()
-    fig = go.Figure()
-    fig.add_bar(x=scales, y=medians["real"].to_list(), name="real branch")
-    fig.add_bar(x=scales, y=medians["imag"].to_list(), name="imag branch")
-    fig.update_layout(
+    _scales = _medians["scale_idx"].to_list()
+    _fig = go.Figure()
+    _fig.add_bar(x=_scales, y=_medians["real"].to_list(), name="real branch")
+    _fig.add_bar(x=_scales, y=_medians["imag"].to_list(), name="imag branch")
+    _fig.update_layout(
         title="Median post-ReLU dead-activation rate, by scale",
         xaxis_title="FAM scale",
         yaxis_title="fraction of activations == 0",
         yaxis_range=[0, 1],
         barmode="group",
     )
-    fig
-
+    _fig
     return
 
 
 @app.cell(hide_code=True)
-def _(px, stats_df):
-    fig = px.box(
-        stats_df.to_pandas(),
-        x="scale_idx",
-        y="fft_real_dc_share",
-        points="all",
+def _(go, pl, stats_df):
+    _fig = go.Figure()
+    for _scale in sorted(set(stats_df["scale_idx"].to_list())):
+        _sub = stats_df.filter(pl.col("scale_idx") == _scale)
+        _fig.add_box(
+            y=_sub["fft_real_dc_share"].to_list(),
+            name=f"scale {_scale}",
+            boxpoints="all",
+            pointpos=0,
+        )
+    _fig.update_layout(
         title="DC-bin share of FFT-real energy, by scale (1.0 = single bin dominates)",
-        labels={"scale_idx": "FAM scale", "fft_real_dc_share": "|freq.real[0,0]|^2 / total"},
+        xaxis_title="FAM scale",
+        yaxis_title="|freq.real[0,0]|^2 / total",
+        yaxis_range=[0, 1],
+        showlegend=False,
     )
-    fig.update_yaxes(range=[0, 1])
-    fig
-
+    _fig
     return
 
 
 @app.cell(hide_code=True)
 def _(blob, mo, pl, stats_df):
-    iou = blob["val_iou"]
-    delta_skip = iou["fam_skip_fft"] - iou["as_trained"]
-    delta_zero = iou["fam_zero"] - iou["as_trained"]
-    median_ratio_by_scale = (
+    _iou = blob["val_iou"]
+    _delta_skip = _iou["fam_skip_fft"] - _iou["as_trained"]
+    _delta_zero = _iou["fam_zero"] - _iou["as_trained"]
+    _median_ratio_by_scale = (
         stats_df.with_columns((pl.col("contribution_norm") / pl.col("input_norm")).alias("ratio"))
         .group_by("scale_idx")
         .agg(pl.col("ratio").median().alias("median_ratio"))
         .sort("scale_idx")
     )
-    ratios = dict(
+    _ratios = dict(
         zip(
-            median_ratio_by_scale["scale_idx"].to_list(),
-            median_ratio_by_scale["median_ratio"].to_list(),
+            _median_ratio_by_scale["scale_idx"].to_list(),
+            _median_ratio_by_scale["median_ratio"].to_list(),
             strict=True,
         )
     )
-    min_ratio = min(ratios.values())
-    max_ratio = max(ratios.values())
+    _min_ratio = min(_ratios.values())
+    _max_ratio = max(_ratios.values())
 
-    if abs(delta_zero) < 0.005:
-        verdict = (
+    if abs(_delta_zero) < 0.005:
+        _verdict = (
             "**Entire FAM block is dead.** `fam_zero` matches `as_trained` within "
-            f"{delta_zero:+.4f}. The 1x1 final conv is also wasted. Next step: "
+            f"{_delta_zero:+.4f}. The 1x1 final conv is also wasted. Next step: "
             "FAM redesign (see decision table in the spec)."
         )
-    elif abs(delta_skip) < 0.005:
-        verdict = (
+    elif abs(_delta_skip) < 0.005:
+        _verdict = (
             "**FFT pathway is dead.** `fam_skip_fft` matches `as_trained` within "
-            f"{delta_skip:+.4f} — the 1x1 projection is doing all the work. "
+            f"{_delta_skip:+.4f} — the 1x1 projection is doing all the work. "
             "Next step: FAM redesign (see decision table in the spec)."
         )
-    elif delta_skip > 0:
-        verdict = (
+    elif _delta_skip > 0:
+        _verdict = (
             f"**FFT pathway is actively hurting.** `fam_skip_fft` is *better* "
-            f"by {delta_skip:+.4f}. Strong evidence for redesign or removal."
+            f"by {_delta_skip:+.4f}. Strong evidence for redesign or removal."
         )
-    elif delta_skip < -0.05 and delta_zero < -0.05 and min_ratio > 0.1:
-        verdict = (
+    elif _delta_skip < -0.05 and _delta_zero < -0.05 and _min_ratio > 0.1:
+        _verdict = (
             f"**FAM is healthy.** Both ablations hurt by > 0.05 and contribution "
-            f"ratio at all scales > 0.1 (min={min_ratio:.3f}, max={max_ratio:.3f}). "
+            f"ratio at all scales > 0.1 (min={_min_ratio:.3f}, max={_max_ratio:.3f}). "
             "The ceiling is recipe-bound. Next step: resume the frozen B/C/D sweep."
         )
     else:
-        verdict = (
-            f"**Ambiguous.** delta_skip={delta_skip:+.4f}, delta_zero={delta_zero:+.4f}, "
-            f"contribution ratio min={min_ratio:.3f} max={max_ratio:.3f}. Per-scale ratios: "
-            f"{', '.join(f'scale {k}: {v:.3f}' for k, v in ratios.items())}. "
+        _verdict = (
+            f"**Ambiguous.** delta_skip={_delta_skip:+.4f}, delta_zero={_delta_zero:+.4f}, "
+            f"contribution ratio min={_min_ratio:.3f} max={_max_ratio:.3f}. Per-scale ratios: "
+            f"{', '.join(f'scale {k}: {v:.3f}' for k, v in _ratios.items())}. "
             "Re-read the decision table in the spec — this case is between buckets."
         )
-    mo.md(f"### Verdict\n\n{verdict}")
-
+    mo.md("### Verdict\n\n" + _verdict)
     return
+
+
+if __name__ == "__main__":
+    app.run()
