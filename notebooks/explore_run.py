@@ -55,12 +55,12 @@ def _(RUNS_DIR, mo):
         label="Run dir",
     )
     run_picker if run_dirs else mo.md(f"**No runs found under `{RUNS_DIR}`.**")
-    return (run_picker,)
+    return run_dirs, run_picker
 
 
 @app.cell(hide_code=True)
-def _(load_manifest, mo, run_picker):
-    mo.stop(run_picker.value is None, mo.md("_Waiting for a run._"))
+def _(load_manifest, mo, run_dirs, run_picker):
+    mo.stop(not run_dirs, mo.md("_Waiting for a run._"))
     run_dir = run_picker.value
     manifest = load_manifest(run_dir)
     stages = manifest["stages"]
@@ -74,6 +74,7 @@ def _(load_manifest, mo, run_picker):
 
 @app.cell(hide_code=True)
 def _(mo, run_dir):
+    mo.stop(not (run_dir / "config.yaml").is_file())
     config_text = (run_dir / "config.yaml").read_text()
     env_path = run_dir / "env.json"
     env_text = env_path.read_text() if env_path.is_file() else "(no env.json)"
