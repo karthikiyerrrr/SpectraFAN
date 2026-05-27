@@ -18,7 +18,7 @@ from spectrafan.config import (
     RunConfig,
     TrainConfig,
 )
-from spectrafan.train import fit
+from spectrafan.training.train import fit
 
 
 class _SyntheticPairs(Dataset):
@@ -71,7 +71,7 @@ def test_fit_one_epoch_decreases_loss(tmp_path: Path, monkeypatch: pytest.Monkey
     """Three epochs on a tiny synthetic Dataset; train loss must decrease."""
     ds = _SyntheticPairs()
     # Inject our synthetic dataset by monkey-patching the dataset factory.
-    import spectrafan.train as train_mod
+    import spectrafan.training.train as train_mod
 
     monkeypatch.setattr(train_mod, "build_datasets", lambda _cfg: (ds, ds))
 
@@ -94,7 +94,7 @@ def test_fit_one_epoch_decreases_loss(tmp_path: Path, monkeypatch: pytest.Monkey
 def test_fit_with_amp_completes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """fit() with amp=True runs end-to-end on CPU (autocast is a no-op there) and produces finite metrics."""
     ds = _SyntheticPairs()
-    import spectrafan.train as train_mod
+    import spectrafan.training.train as train_mod
 
     monkeypatch.setattr(train_mod, "build_datasets", lambda _cfg: (ds, ds))
 
@@ -148,7 +148,7 @@ def test_smoke_trial_acceptance() -> None:
 def test_epoch_checkpoints_saved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """With checkpoint_every=2 and 4 epochs, epoch_002.pt and epoch_004.pt are saved."""
     ds = _SyntheticPairs()
-    import spectrafan.train as train_mod
+    import spectrafan.training.train as train_mod
 
     monkeypatch.setattr(train_mod, "build_datasets", lambda _cfg: (ds, ds))
 
@@ -171,7 +171,7 @@ def test_env_json_written(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     import json as _json
 
     ds = _SyntheticPairs()
-    import spectrafan.train as train_mod
+    import spectrafan.training.train as train_mod
 
     monkeypatch.setattr(train_mod, "build_datasets", lambda _cfg: (ds, ds))
 
@@ -200,7 +200,7 @@ def test_env_json_written(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_set_global_seed_enables_determinism() -> None:
     """set_global_seed turns on torch.use_deterministic_algorithms (warn_only)."""
-    from spectrafan.train import set_global_seed
+    from spectrafan.training.train import set_global_seed
 
     set_global_seed(0)
     assert torch.are_deterministic_algorithms_enabled()
@@ -210,7 +210,7 @@ def test_set_global_seed_deterministic_false_enables_benchmark() -> None:
     """set_global_seed(deterministic=False) turns OFF the deterministic flag
     and turns ON cudnn.benchmark (the speed-trading path used by sweep configs).
     Restore deterministic mode afterwards so it doesn't leak across tests."""
-    from spectrafan.train import set_global_seed
+    from spectrafan.training.train import set_global_seed
 
     try:
         set_global_seed(0, deterministic=False)
@@ -223,7 +223,7 @@ def test_set_global_seed_deterministic_false_enables_benchmark() -> None:
 
 def test_full_repro_config_loads() -> None:
     """configs/full_repro.yaml loads cleanly and carries the locked recipe values."""
-    from spectrafan.train import load_config
+    from spectrafan.config import load_config
 
     cfg = load_config(Path("configs/full_repro.yaml"))
     assert cfg.train.epochs == 50
@@ -242,7 +242,7 @@ def test_full_repro_config_loads() -> None:
 def test_resume_continues_training(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """fit two epochs, then resume from last.pt for two more; metrics.parquet has 4 rows total."""
     ds = _SyntheticPairs()
-    import spectrafan.train as train_mod
+    import spectrafan.training.train as train_mod
 
     monkeypatch.setattr(train_mod, "build_datasets", lambda _cfg: (ds, ds))
 
@@ -267,7 +267,7 @@ def test_resume_continues_training(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 def test_model_config_name_defaults_to_fanet() -> None:
     """`ModelConfig.name` defaults to "fanet" so existing configs without the
     field continue to instantiate the original FANet class."""
-    from spectrafan.train import ModelConfig
+    from spectrafan.config import ModelConfig
 
     cfg = ModelConfig()
     assert cfg.name == "fanet"
@@ -275,7 +275,7 @@ def test_model_config_name_defaults_to_fanet() -> None:
 
 def test_dict_to_run_config_parses_model_name(tmp_path: Path) -> None:
     """The YAML loader picks up `model.name` from a config file."""
-    from spectrafan.train import load_config
+    from spectrafan.config import load_config
 
     cfg_path = tmp_path / "test.yaml"
     cfg_path.write_text(
@@ -287,7 +287,7 @@ def test_dict_to_run_config_parses_model_name(tmp_path: Path) -> None:
 
 def test_dict_to_run_config_defaults_model_name_when_omitted(tmp_path: Path) -> None:
     """A config without `model.name` falls back to the dataclass default."""
-    from spectrafan.train import load_config
+    from spectrafan.config import load_config
 
     cfg_path = tmp_path / "test.yaml"
     cfg_path.write_text("data:\n  splits_dir: data/splits/temimagenet_v1\n")
@@ -297,8 +297,9 @@ def test_dict_to_run_config_defaults_model_name_when_omitted(tmp_path: Path) -> 
 
 def test_build_model_fanet_default() -> None:
     """build_model returns a FANet instance for the default name."""
-    from spectrafan.train import DataConfig, ModelConfig, build_model
-    from spectrafan.unet import FANet, FANetMini
+    from spectrafan.config import DataConfig, ModelConfig
+    from spectrafan.models.unet import FANet, FANetMini
+    from spectrafan.training.train import build_model
 
     cfg = ModelConfig()  # name defaults to "fanet"
     model = build_model(cfg, DataConfig())
@@ -310,8 +311,9 @@ def test_build_model_fanet_default() -> None:
 
 def test_build_model_fanetmini() -> None:
     """build_model returns a FANetMini instance when name='fanetmini'."""
-    from spectrafan.train import DataConfig, ModelConfig, build_model
-    from spectrafan.unet import FANetMini
+    from spectrafan.config import DataConfig, ModelConfig
+    from spectrafan.models.unet import FANetMini
+    from spectrafan.training.train import build_model
 
     cfg = ModelConfig(name="fanetmini")
     model = build_model(cfg, DataConfig())
@@ -322,7 +324,8 @@ def test_build_model_fanetmini() -> None:
 
 def test_build_model_unknown_name_raises() -> None:
     """build_model rejects unknown model.name values with a ValueError."""
-    from spectrafan.train import DataConfig, ModelConfig, build_model
+    from spectrafan.config import DataConfig, ModelConfig
+    from spectrafan.training.train import build_model
 
     cfg = ModelConfig(name="not-a-real-model")
     with pytest.raises(ValueError, match="unknown model.name"):
@@ -332,7 +335,8 @@ def test_build_model_unknown_name_raises() -> None:
 def test_build_model_fanetmini_ignores_channels_and_bottleneck() -> None:
     """When name='fanetmini', cfg.channels/bottleneck are deliberately
     ignored by the dispatch (the class hardcodes them)."""
-    from spectrafan.train import DataConfig, ModelConfig, build_model
+    from spectrafan.config import DataConfig, ModelConfig
+    from spectrafan.training.train import build_model
 
     cfg = ModelConfig(name="fanetmini", channels=(99, 99, 99, 99), bottleneck=99)
     model = build_model(cfg, DataConfig())
@@ -354,7 +358,7 @@ def test_optim_config_new_field_defaults() -> None:
 
 def test_load_config_passes_new_optim_fields(tmp_path: Path) -> None:
     """load_config round-trips all 4 new optim fields from YAML into OptimConfig."""
-    from spectrafan.train import load_config
+    from spectrafan.config import load_config
 
     cfg_path = tmp_path / "test.yaml"
     cfg_path.write_text(
@@ -382,7 +386,8 @@ def test_build_optimizer_rmsprop_uses_momentum() -> None:
     """build_optimizer returns RMSprop with the configured momentum."""
     import torch
 
-    from spectrafan.train import OptimConfig, build_optimizer
+    from spectrafan.config import OptimConfig
+    from spectrafan.training.train import build_optimizer
 
     model = torch.nn.Linear(3, 1)
     cfg = OptimConfig(optimizer="rmsprop", lr=1.0e-5, momentum=0.99, weight_decay=1.0e-8)
@@ -398,7 +403,8 @@ def test_build_optimizer_adamw_uses_betas() -> None:
     """build_optimizer returns AdamW with the configured betas."""
     import torch
 
-    from spectrafan.train import OptimConfig, build_optimizer
+    from spectrafan.config import OptimConfig
+    from spectrafan.training.train import build_optimizer
 
     model = torch.nn.Linear(3, 1)
     cfg = OptimConfig(optimizer="adamw", lr=1.0e-4, betas=(0.9, 0.95), weight_decay=1.0e-4)
@@ -414,7 +420,8 @@ def test_build_optimizer_unknown_raises() -> None:
     """build_optimizer rejects unknown optimizer names with a ValueError."""
     import torch
 
-    from spectrafan.train import OptimConfig, build_optimizer
+    from spectrafan.config import OptimConfig
+    from spectrafan.training.train import build_optimizer
 
     model = torch.nn.Linear(3, 1)
     cfg = OptimConfig(optimizer="sgd")
@@ -426,7 +433,8 @@ def test_build_scheduler_exponential_no_warmup() -> None:
     """schedule='exponential' with warmup_epochs=0 returns ExponentialLR directly."""
     import torch
 
-    from spectrafan.train import OptimConfig, build_optimizer, build_scheduler
+    from spectrafan.config import OptimConfig
+    from spectrafan.training.train import build_optimizer, build_scheduler
 
     model = torch.nn.Linear(3, 1)
     cfg = OptimConfig(optimizer="rmsprop", schedule="exponential", decay=0.95, warmup_epochs=0)
@@ -440,7 +448,8 @@ def test_build_scheduler_cosine_no_warmup() -> None:
     """schedule='cosine' with warmup_epochs=0 returns CosineAnnealingLR with correct T_max."""
     import torch
 
-    from spectrafan.train import OptimConfig, build_optimizer, build_scheduler
+    from spectrafan.config import OptimConfig
+    from spectrafan.training.train import build_optimizer, build_scheduler
 
     model = torch.nn.Linear(3, 1)
     cfg = OptimConfig(optimizer="adamw", schedule="cosine", warmup_epochs=0, min_lr=1.0e-6)
@@ -455,7 +464,8 @@ def test_build_scheduler_cosine_with_warmup_uses_sequentialLR() -> None:  # noqa
     """schedule='cosine' with warmup_epochs>0 wraps LinearLR + CosineAnnealingLR in SequentialLR."""
     import torch
 
-    from spectrafan.train import OptimConfig, build_optimizer, build_scheduler
+    from spectrafan.config import OptimConfig
+    from spectrafan.training.train import build_optimizer, build_scheduler
 
     model = torch.nn.Linear(3, 1)
     cfg = OptimConfig(optimizer="adamw", schedule="cosine", warmup_epochs=5, min_lr=1.0e-6)
@@ -473,7 +483,8 @@ def test_build_scheduler_warmup_exceeds_epochs_raises() -> None:
     """warmup_epochs >= total_epochs is rejected with a ValueError."""
     import torch
 
-    from spectrafan.train import OptimConfig, build_optimizer, build_scheduler
+    from spectrafan.config import OptimConfig
+    from spectrafan.training.train import build_optimizer, build_scheduler
 
     model = torch.nn.Linear(3, 1)
     cfg = OptimConfig(optimizer="adamw", schedule="cosine", warmup_epochs=50)
@@ -486,7 +497,8 @@ def test_build_scheduler_unknown_raises() -> None:
     """build_scheduler rejects unknown schedule names with a ValueError."""
     import torch
 
-    from spectrafan.train import OptimConfig, build_optimizer, build_scheduler
+    from spectrafan.config import OptimConfig
+    from spectrafan.training.train import build_optimizer, build_scheduler
 
     model = torch.nn.Linear(3, 1)
     cfg = OptimConfig(optimizer="rmsprop", schedule="step")
@@ -500,7 +512,7 @@ def test_fit_smoke_adamw_cosine_warmup(tmp_path: Path, monkeypatch: pytest.Monke
     finite metrics.parquet, AND saves an AdamW-shaped optimizer state (proves
     fit() actually switched optimizers, not just survived the run)."""
     ds = _SyntheticPairs()
-    import spectrafan.train as train_mod
+    import spectrafan.training.train as train_mod
 
     monkeypatch.setattr(train_mod, "build_datasets", lambda _cfg: (ds, ds))
 
@@ -534,7 +546,7 @@ def test_fit_smoke_adamw_cosine_warmup(tmp_path: Path, monkeypatch: pytest.Monke
 def test_fanetmini_sweep_configs_load() -> None:
     """All three sweep configs round-trip through load_config and produce the
     expected OptimConfig + DataConfig + loss values from the spec's sweep matrix."""
-    from spectrafan.train import load_config
+    from spectrafan.config import load_config
 
     cfg_b = load_config(Path("configs/fanetmini_sweep_B.yaml"))
     assert cfg_b.model.name == "fanetmini"
@@ -581,7 +593,7 @@ def test_fanetmini_sweep_configs_load() -> None:
 
 def test_data_config_accepts_input_norm_and_in_channels() -> None:
     """DataConfig holds input_norm and in_channels with backward-compatible defaults."""
-    from spectrafan.train import DataConfig
+    from spectrafan.config import DataConfig
 
     cfg = DataConfig()
     assert cfg.input_norm == "none"
@@ -594,7 +606,8 @@ def test_data_config_accepts_input_norm_and_in_channels() -> None:
 
 def test_load_config_threads_input_norm_and_in_channels(tmp_path: Path) -> None:
     """YAML config -> RunConfig -> TEMImageNetDataset wires both options through end-to-end."""
-    from spectrafan.train import build_datasets, load_config
+    from spectrafan.config import load_config
+    from spectrafan.training.train import build_datasets
 
     # Set up a minimal but valid dataset root so build_datasets can construct it.
     data_root = tmp_path / "data_root"

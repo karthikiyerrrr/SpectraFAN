@@ -1,7 +1,7 @@
 """SpectraFAN — frequency-domain attention for crystallographic image segmentation."""
 
-from spectrafan.unet import FANet, FANetMini
+from spectrafan.models import FAMComplex, FANet, FANetMini
 
 __version__ = "0.0.1"
 
-__all__ = ["FANet", "FANetMini", "__version__"]
+__all__ = ["FAMComplex", "FANet", "FANetMini", "__version__"]

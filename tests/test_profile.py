@@ -12,15 +12,15 @@ import polars as pl
 import pytest
 import torch
 
-from spectrafan.config import ProfileConfig, load_profile_config
-from spectrafan.fam import FAMComplex
-from spectrafan.profile import (
+from spectrafan.analysis.profile import (
     FAMProfiled,
     Timer,
     compute_summary,
     profile_one_config,
     write_env_json,
 )
+from spectrafan.config import ProfileConfig, load_profile_config
+from spectrafan.models.fam import FAMComplex
 
 EXPECTED_CATEGORIES_FWD = {
     "total_fwd",
@@ -446,7 +446,7 @@ def test_cli_smoke_writes_all_artifacts(tmp_path: Path) -> None:
         [
             sys.executable,
             "-m",
-            "spectrafan.profile",
+            "spectrafan.analysis.profile",
             "--config",
             str(cfg),
             "--output",
@@ -483,7 +483,7 @@ def test_cli_backward_flag_emits_bwd_rows(tmp_path: Path) -> None:
         [
             sys.executable,
             "-m",
-            "spectrafan.profile",
+            "spectrafan.analysis.profile",
             "--config",
             str(cfg),
             "--output",

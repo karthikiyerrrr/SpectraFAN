@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 
-from spectrafan.losses import BCEDiceLoss
+from spectrafan.training.losses import BCEDiceLoss
 
 
 def test_bce_dice_zero_on_perfect_pred() -> None:

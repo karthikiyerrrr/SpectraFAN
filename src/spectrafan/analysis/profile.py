@@ -29,8 +29,8 @@ import torch
 from torch import nn
 
 from spectrafan.config import ProfileConfig, load_profile_config
-from spectrafan.fam import ConvKind, FAMComplex
-from spectrafan.unet import FANet
+from spectrafan.models.fam import ConvKind, FAMComplex
+from spectrafan.models.unet import FANet
 
 
 class Timer:
@@ -472,7 +472,7 @@ def _maybe_capture_chrome_trace(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m spectrafan.profile")
+    parser = argparse.ArgumentParser(prog="python -m spectrafan.analysis.profile")
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--backward", action="store_true")

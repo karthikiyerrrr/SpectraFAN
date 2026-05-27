@@ -6,7 +6,7 @@ Writes per-epoch metrics to
 ``runs/<id>/metrics.parquet`` and checkpoints ``last.pt`` / ``best.pt``.
 
 CLI:
-    uv run python -m spectrafan.train --config configs/smoke.yaml \\
+    uv run python -m spectrafan.training.train --config configs/smoke.yaml \\
         [--override key.subkey=value ...]
 """
 
@@ -37,10 +37,10 @@ from spectrafan.config import (
     run_config_to_dict,
 )
 from spectrafan.data import TEMImageNetDataset
-from spectrafan.losses import BCEDiceLoss
-from spectrafan.metrics import RunningMetrics
-from spectrafan.transforms import eval_transforms, train_transforms
-from spectrafan.unet import FANet, FANetMini
+from spectrafan.data.transforms import eval_transforms, train_transforms
+from spectrafan.models.unet import FANet, FANetMini
+from spectrafan.training.losses import BCEDiceLoss
+from spectrafan.training.metrics import RunningMetrics
 
 # ---------------------------------------------------------------------------
 # Device + seed + run dir
@@ -632,7 +632,7 @@ def fit(cfg: RunConfig, config_stem: str = "run", resume_from: Path | None = Non
 
 
 def _main() -> None:
-    parser = argparse.ArgumentParser(prog="python -m spectrafan.train")
+    parser = argparse.ArgumentParser(prog="python -m spectrafan.training.train")
     parser.add_argument("--config", required=True, type=Path)
     parser.add_argument(
         "--override",

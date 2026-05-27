@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 
-from spectrafan.metrics import RunningMetrics, dice, iou, pixel_accuracy
+from spectrafan.training.metrics import RunningMetrics, dice, iou, pixel_accuracy
 
 
 def test_iou_hand_computed() -> None:

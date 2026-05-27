@@ -5,8 +5,8 @@ fam_skip_fft, fam_zero), and writes <run_dir>/fam_stats.parquet plus
 <run_dir>/fam_diagnosis.json. See docs/superpowers/specs/2026-05-25-fam-postmortem-design.md.
 
 CLI:
-    uv run python -m spectrafan.diagnose_fam --run runs/<id>
-    uv run python -m spectrafan.diagnose_fam --latest fanetmini
+    uv run python -m spectrafan.analysis.diagnose_fam --run runs/<id>
+    uv run python -m spectrafan.analysis.diagnose_fam --latest fanetmini
 """
 
 from __future__ import annotations
@@ -21,12 +21,12 @@ import polars as pl
 import torch
 from torch.utils.data import DataLoader
 
+from spectrafan.analysis.predict import find_latest_run
 from spectrafan.data import TEMImageNetDataset
-from spectrafan.fam import FAMComplex
-from spectrafan.metrics import RunningMetrics
-from spectrafan.predict import find_latest_run
-from spectrafan.train import build_model, load_config, resolve_device
-from spectrafan.transforms import eval_transforms
+from spectrafan.data.transforms import eval_transforms
+from spectrafan.models.fam import FAMComplex
+from spectrafan.training.metrics import RunningMetrics
+from spectrafan.training.train import build_model, load_config, resolve_device
 
 
 def diagnose_run(run_dir: Path) -> None:
@@ -252,7 +252,7 @@ def _run_val_once(model: torch.nn.Module, loader: DataLoader, device: torch.devi
 def _main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(prog="python -m spectrafan.diagnose_fam")
+    parser = argparse.ArgumentParser(prog="python -m spectrafan.analysis.diagnose_fam")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--run", type=Path, help="Path to a run directory.")
     group.add_argument(

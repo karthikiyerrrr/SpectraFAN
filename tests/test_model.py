@@ -8,8 +8,8 @@ import pytest
 import torch
 from fvcore.nn import FlopCountAnalysis
 
-from spectrafan.fam import ConvKind, FAMComplex
-from spectrafan.unet import FANet, OutputNorm
+from spectrafan.models.fam import ConvKind, FAMComplex
+from spectrafan.models.unet import FANet, OutputNorm
 
 CONV_KINDS: list[ConvKind] = ["depthwise", "depthwise_separable"]
 
@@ -156,7 +156,7 @@ def test_fanet_calibration_locked() -> None:
 
 def test_fanetmini_forward_shape() -> None:
     """FANetMini maps (B, 3, 256, 256) to (B, 1, 256, 256) logits."""
-    from spectrafan.unet import FANetMini
+    from spectrafan.models.unet import FANetMini
 
     torch.manual_seed(0)
     model = FANetMini()
@@ -171,7 +171,7 @@ def test_fanetmini_forward_shape() -> None:
 
 def test_fanetmini_has_three_fams_with_expected_channels() -> None:
     """FANetMini exposes exactly three FAMs at channel widths (32, 64, 128)."""
-    from spectrafan.unet import FANetMini
+    from spectrafan.models.unet import FANetMini
 
     model = FANetMini()
     assert len(model.fams) == 3
@@ -184,7 +184,7 @@ def test_fanetmini_has_three_fams_with_expected_channels() -> None:
 
 def test_fanetmini_inherits_fanet_backbone() -> None:
     """FANetMini is a FANet subclass and reuses the same module composition."""
-    from spectrafan.unet import FANet, FANetMini
+    from spectrafan.models.unet import FANet, FANetMini
 
     assert issubclass(FANetMini, FANet)
     model = FANetMini()
@@ -199,7 +199,7 @@ def test_fanetmini_inherits_fanet_backbone() -> None:
 def test_fanetmini_param_count_pinned() -> None:
     """Pin FANetMini parameter count. Equality (not range) so any accidental
     composition change surfaces as a diff in this test."""
-    from spectrafan.unet import FANetMini
+    from spectrafan.models.unet import FANetMini
 
     expected = 1958595  # measured from FANetMini() once
     actual = sum(p.numel() for p in FANetMini().parameters())
@@ -212,8 +212,8 @@ def test_fanetmini_param_count_pinned() -> None:
 def test_package_reexports_models() -> None:
     """`from spectrafan import FANet, FANetMini` must work for users."""
     import spectrafan
-    from spectrafan.unet import FANet as FANet_src
-    from spectrafan.unet import FANetMini as FANetMini_src
+    from spectrafan.models.unet import FANet as FANet_src
+    from spectrafan.models.unet import FANetMini as FANetMini_src
 
     assert hasattr(spectrafan, "FANet")
     assert hasattr(spectrafan, "FANetMini")
@@ -225,7 +225,7 @@ def test_package_reexports_models() -> None:
 
 def test_fanetmini_accepts_in_channels_one() -> None:
     """FANetMini builds with in_channels=1 and forward-passes (1, 1, 256, 256) inputs."""
-    from spectrafan.unet import FANetMini
+    from spectrafan.models.unet import FANetMini
 
     torch.manual_seed(0)
     model = FANetMini(in_channels=1)

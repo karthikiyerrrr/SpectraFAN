@@ -9,7 +9,13 @@ import numpy as np
 import torch
 from PIL import Image
 
-from spectrafan.data import TEMImageNetDataset, build_split, list_pairs, load_pair, load_split
+from spectrafan.data.temimagenet import (
+    TEMImageNetDataset,
+    build_split,
+    list_pairs,
+    load_pair,
+    load_split,
+)
 
 
 def _write_png(path: Path, size: tuple[int, int] = (8, 8)) -> None:

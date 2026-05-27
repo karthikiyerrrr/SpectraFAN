@@ -16,7 +16,7 @@ from torch.utils.data import Dataset
 def test_find_latest_run_resolves_most_recent_match(tmp_path: Path) -> None:
     """Given multiple runs/*_<suffix>/ dirs, find_latest_run returns the one
     with the highest mtime that matches the suffix."""
-    from spectrafan.predict import find_latest_run
+    from spectrafan.analysis.predict import find_latest_run
 
     older = tmp_path / "2026-05-20_010101_fanetmini"
     newer = tmp_path / "2026-05-22_020202_fanetmini"
@@ -36,7 +36,7 @@ def test_find_latest_run_resolves_most_recent_match(tmp_path: Path) -> None:
 
 def test_find_latest_run_no_match_raises(tmp_path: Path) -> None:
     """find_latest_run raises FileNotFoundError when no dir matches the suffix."""
-    from spectrafan.predict import find_latest_run
+    from spectrafan.analysis.predict import find_latest_run
 
     (tmp_path / "2026-05-20_010101_full_repro").mkdir()
 
@@ -89,7 +89,7 @@ def _write_fanetmini_run_dir(run_dir: Path, image_size: int = 32) -> None:
         "train": {"device": "cpu"},
     }
     (run_dir / "config.yaml").write_text(yaml.safe_dump(cfg_dict))
-    from spectrafan.unet import FANetMini
+    from spectrafan.models.unet import FANetMini
 
     model = FANetMini()
     torch.save(
@@ -100,7 +100,7 @@ def _write_fanetmini_run_dir(run_dir: Path, image_size: int = 32) -> None:
 
 def test_predict_writes_expected_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """predict_run writes predictions.npz + test_metrics.json with the spec's shapes."""
-    from spectrafan import predict as predict_mod
+    from spectrafan.analysis import predict as predict_mod
 
     run_dir = tmp_path / "2026-05-23_000000_fanetmini"
     _write_fanetmini_run_dir(run_dir, image_size=32)
@@ -165,7 +165,7 @@ def _write_fanet_run_dir(run_dir: Path, image_size: int = 32) -> None:
         "train": {"device": "cpu"},
     }
     (run_dir / "config.yaml").write_text(yaml.safe_dump(cfg_dict))
-    from spectrafan.unet import FANet
+    from spectrafan.models.unet import FANet
 
     model = FANet(channels=(8, 16, 32, 64), bottleneck=128)
     torch.save(
@@ -176,7 +176,7 @@ def _write_fanet_run_dir(run_dir: Path, image_size: int = 32) -> None:
 
 def test_predict_works_for_fanet_too(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """predict_run dispatches through build_model and works for FANet runs too."""
-    from spectrafan import predict as predict_mod
+    from spectrafan.analysis import predict as predict_mod
 
     run_dir = tmp_path / "2026-05-23_000000_full_repro"
     _write_fanet_run_dir(run_dir, image_size=32)
@@ -193,7 +193,7 @@ def test_predict_works_for_fanet_too(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
 def test_predict_cli_requires_run_or_latest(monkeypatch) -> None:
     """argparse rejects invocation with neither --run nor --latest."""
-    from spectrafan import predict as predict_mod
+    from spectrafan.analysis import predict as predict_mod
 
     monkeypatch.setattr("sys.argv", ["spectrafan.predict"])
     with pytest.raises(SystemExit):
@@ -202,7 +202,7 @@ def test_predict_cli_requires_run_or_latest(monkeypatch) -> None:
 
 def test_predict_cli_rejects_both_run_and_latest(monkeypatch, tmp_path: Path) -> None:
     """argparse rejects invocation with both --run and --latest (mutually exclusive)."""
-    from spectrafan import predict as predict_mod
+    from spectrafan.analysis import predict as predict_mod
 
     monkeypatch.setattr(
         "sys.argv",
@@ -216,7 +216,7 @@ def test_predict_cli_runs_predict_with_run_flag(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """CLI with --run <path> invokes predict_run on that path."""
-    from spectrafan import predict as predict_mod
+    from spectrafan.analysis import predict as predict_mod
 
     run_dir = tmp_path / "2026-05-23_000000_fanetmini"
     _write_fanetmini_run_dir(run_dir, image_size=32)
@@ -233,7 +233,7 @@ def test_predict_cli_latest_resolves_against_runs_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """CLI with --latest <suffix> --runs-root <dir> resolves and runs predict."""
-    from spectrafan import predict as predict_mod
+    from spectrafan.analysis import predict as predict_mod
 
     run_dir = tmp_path / "2026-05-23_000000_fanetmini"
     _write_fanetmini_run_dir(run_dir, image_size=32)

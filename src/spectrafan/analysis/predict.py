@@ -1,8 +1,8 @@
 """Generate inference artifacts for a finished training run.
 
 CLI:
-    uv run python -m spectrafan.predict --run runs/<id>
-    uv run python -m spectrafan.predict --latest fanetmini
+    uv run python -m spectrafan.analysis.predict --run runs/<id>
+    uv run python -m spectrafan.analysis.predict --latest fanetmini
 
 Writes <run>/predictions.npz (16 val + 16 test sample preds) and
 <run>/test_metrics.json (IoU/Dice/pixel-acc over the full test split).
@@ -18,9 +18,9 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 
 from spectrafan.data import TEMImageNetDataset
-from spectrafan.metrics import RunningMetrics
-from spectrafan.train import build_model, load_config, resolve_device
-from spectrafan.transforms import eval_transforms
+from spectrafan.data.transforms import eval_transforms
+from spectrafan.training.metrics import RunningMetrics
+from spectrafan.training.train import build_model, load_config, resolve_device
 
 SAMPLE_SIZE = 16
 
@@ -137,7 +137,7 @@ def predict_run(run_dir: Path) -> None:
 def _main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(prog="python -m spectrafan.predict")
+    parser = argparse.ArgumentParser(prog="python -m spectrafan.analysis.predict")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--run", type=Path, help="Path to a run directory.")
     group.add_argument(

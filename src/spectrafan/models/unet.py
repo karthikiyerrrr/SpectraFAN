@@ -13,7 +13,7 @@ from typing import Literal
 import torch
 from torch import nn
 
-from spectrafan.fam import ConvKind, FAMComplex
+from spectrafan.models.fam import ConvKind, FAMComplex
 
 OutputNorm = Literal["bn", "none", "groupnorm"]
 

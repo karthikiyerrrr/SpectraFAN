@@ -11,19 +11,19 @@ import torch
 import yaml
 from torch.utils.data import Dataset
 
-from spectrafan.fam import FAMComplex
+from spectrafan.models.fam import FAMComplex
 
 
 def test_module_imports() -> None:
     """diagnose_fam imports cleanly and exposes diagnose_run."""
-    from spectrafan import diagnose_fam
+    from spectrafan.analysis import diagnose_fam
 
     assert hasattr(diagnose_fam, "diagnose_run")
 
 
 def test_patched_forward_skip_fft_preserves_shape_and_dtype() -> None:
     """fam_skip_fft drops the FFT pathway but keeps the learned 1x1 projection."""
-    from spectrafan.diagnose_fam import _patched_forward_skip_fft
+    from spectrafan.analysis.diagnose_fam import _patched_forward_skip_fft
 
     fam = FAMComplex(channels=8)
     x = torch.randn(2, 8, 16, 16)
@@ -37,7 +37,7 @@ def test_patched_forward_skip_fft_preserves_shape_and_dtype() -> None:
 
 def test_patched_forward_zero_returns_identity() -> None:
     """fam_zero returns the input unchanged — full FAM-block ablation."""
-    from spectrafan.diagnose_fam import _patched_forward_zero
+    from spectrafan.analysis.diagnose_fam import _patched_forward_zero
 
     fam = FAMComplex(channels=8)
     x = torch.randn(2, 8, 16, 16)
@@ -48,12 +48,12 @@ def test_patched_forward_zero_returns_identity() -> None:
 
 def test_apply_and_restore_forward_round_trip() -> None:
     """After restore, every FAM's forward behaves exactly as the original."""
-    from spectrafan.diagnose_fam import (
+    from spectrafan.analysis.diagnose_fam import (
         _apply_forward,
         _patched_forward_zero,
         _restore_forward,
     )
-    from spectrafan.unet import FANetMini
+    from spectrafan.models.unet import FANetMini
 
     model = FANetMini()
     x = torch.randn(1, 3, 32, 32)
@@ -73,9 +73,13 @@ def test_apply_and_restore_forward_round_trip() -> None:
 
 def test_apply_forward_touches_every_fam() -> None:
     """_apply_forward binds onto every FAMComplex in the model."""
-    from spectrafan.diagnose_fam import _apply_forward, _patched_forward_zero, _restore_forward
-    from spectrafan.fam import FAMComplex
-    from spectrafan.unet import FANetMini
+    from spectrafan.analysis.diagnose_fam import (
+        _apply_forward,
+        _patched_forward_zero,
+        _restore_forward,
+    )
+    from spectrafan.models.fam import FAMComplex
+    from spectrafan.models.unet import FANetMini
 
     model = FANetMini()
     fams = [m for m in model.modules() if isinstance(m, FAMComplex)]
@@ -91,7 +95,7 @@ def test_apply_forward_touches_every_fam() -> None:
 
 def test_collector_starts_empty_and_records_per_call() -> None:
     """Each instrumented forward call appends one row tagged with the FAM's scale_idx."""
-    from spectrafan.diagnose_fam import (
+    from spectrafan.analysis.diagnose_fam import (
         _FamStatsCollector,
         _make_instrumented_forward,
     )
@@ -126,7 +130,7 @@ def test_collector_starts_empty_and_records_per_call() -> None:
 
 def test_collector_increments_batch_idx_within_scale() -> None:
     """Subsequent calls on the same scale advance batch_idx; different scales have their own counters."""
-    from spectrafan.diagnose_fam import _FamStatsCollector, _make_instrumented_forward
+    from spectrafan.analysis.diagnose_fam import _FamStatsCollector, _make_instrumented_forward
 
     fam = FAMComplex(channels=8)
     collector = _FamStatsCollector()
@@ -144,7 +148,7 @@ def test_collector_increments_batch_idx_within_scale() -> None:
 
 def test_instrumented_forward_matches_original() -> None:
     """Instrumented output equals the original FAMComplex.forward output."""
-    from spectrafan.diagnose_fam import _FamStatsCollector, _make_instrumented_forward
+    from spectrafan.analysis.diagnose_fam import _FamStatsCollector, _make_instrumented_forward
 
     fam = FAMComplex(channels=8)
     collector = _FamStatsCollector()
@@ -160,7 +164,7 @@ def test_collector_values_are_finite() -> None:
     """All recorded stats are finite floats in plausible ranges."""
     import math
 
-    from spectrafan.diagnose_fam import _FamStatsCollector, _make_instrumented_forward
+    from spectrafan.analysis.diagnose_fam import _FamStatsCollector, _make_instrumented_forward
 
     fam = FAMComplex(channels=8)
     collector = _FamStatsCollector()
@@ -181,8 +185,8 @@ def test_run_val_once_returns_iou_in_unit_interval() -> None:
     """_run_val_once runs the model once over the loader and returns val_iou in [0, 1]."""
     from torch.utils.data import DataLoader, TensorDataset
 
-    from spectrafan.diagnose_fam import _run_val_once
-    from spectrafan.unet import FANetMini
+    from spectrafan.analysis.diagnose_fam import _run_val_once
+    from spectrafan.models.unet import FANetMini
 
     images = torch.rand(8, 3, 32, 32)
     masks = (images.mean(1, keepdim=True) > 0.5).float()
@@ -237,7 +241,7 @@ def _write_fanetmini_run_dir(run_dir: Path, image_size: int = 32) -> None:
         "train": {"device": "cpu"},
     }
     (run_dir / "config.yaml").write_text(yaml.safe_dump(cfg_dict))
-    from spectrafan.unet import FANetMini
+    from spectrafan.models.unet import FANetMini
 
     model = FANetMini()
     torch.save(
@@ -248,7 +252,7 @@ def _write_fanetmini_run_dir(run_dir: Path, image_size: int = 32) -> None:
 
 def test_diagnose_run_writes_both_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """diagnose_run writes fam_stats.parquet + fam_diagnosis.json with the spec's shape."""
-    from spectrafan import diagnose_fam as diag_mod
+    from spectrafan.analysis import diagnose_fam as diag_mod
 
     run_dir = tmp_path / "2026-05-25_000000_fanetmini"
     _write_fanetmini_run_dir(run_dir)
@@ -290,7 +294,7 @@ def test_diagnose_run_writes_both_files(tmp_path: Path, monkeypatch: pytest.Monk
 
 def test_diagnose_run_refuses_overwrite(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """diagnose_run raises FileExistsError if either output already exists."""
-    from spectrafan import diagnose_fam as diag_mod
+    from spectrafan.analysis import diagnose_fam as diag_mod
 
     run_dir = tmp_path / "2026-05-25_000000_fanetmini"
     _write_fanetmini_run_dir(run_dir)
@@ -305,7 +309,7 @@ def test_diagnose_run_missing_best_pt_raises(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """diagnose_run raises FileNotFoundError when best.pt is absent."""
-    from spectrafan import diagnose_fam as diag_mod
+    from spectrafan.analysis import diagnose_fam as diag_mod
 
     run_dir = tmp_path / "2026-05-25_000000_fanetmini"
     run_dir.mkdir()
@@ -331,7 +335,7 @@ def test_diagnose_run_missing_best_pt_raises(
 
 def test_diagnose_run_works_for_fanet_too(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """diagnose_run handles FANet runs (4 FAMs instead of 3) without changes."""
-    from spectrafan import diagnose_fam as diag_mod
+    from spectrafan.analysis import diagnose_fam as diag_mod
 
     run_dir = tmp_path / "2026-05-25_000000_full_repro"
     run_dir.mkdir()
@@ -346,7 +350,7 @@ def test_diagnose_run_works_for_fanet_too(tmp_path: Path, monkeypatch: pytest.Mo
         "train": {"device": "cpu"},
     }
     (run_dir / "config.yaml").write_text(yaml.safe_dump(cfg_dict))
-    from spectrafan.unet import FANet
+    from spectrafan.models.unet import FANet
 
     model = FANet(channels=(8, 16, 32, 64), bottleneck=128)
     torch.save(
@@ -365,7 +369,7 @@ def test_diagnose_run_works_for_fanet_too(tmp_path: Path, monkeypatch: pytest.Mo
 
 def test_cli_requires_run_or_latest(monkeypatch: pytest.MonkeyPatch) -> None:
     """argparse rejects invocation with neither --run nor --latest."""
-    from spectrafan import diagnose_fam as diag_mod
+    from spectrafan.analysis import diagnose_fam as diag_mod
 
     monkeypatch.setattr("sys.argv", ["spectrafan.diagnose_fam"])
     with pytest.raises(SystemExit):
@@ -374,7 +378,7 @@ def test_cli_requires_run_or_latest(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_cli_rejects_both_run_and_latest(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """argparse rejects invocation with both --run and --latest (mutually exclusive)."""
-    from spectrafan import diagnose_fam as diag_mod
+    from spectrafan.analysis import diagnose_fam as diag_mod
 
     monkeypatch.setattr(
         "sys.argv",
@@ -392,7 +396,7 @@ def test_cli_rejects_both_run_and_latest(monkeypatch: pytest.MonkeyPatch, tmp_pa
 
 def test_cli_runs_diagnose_with_run_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """CLI with --run <path> invokes diagnose_run on that path."""
-    from spectrafan import diagnose_fam as diag_mod
+    from spectrafan.analysis import diagnose_fam as diag_mod
 
     run_dir = tmp_path / "2026-05-25_000000_fanetmini"
     _write_fanetmini_run_dir(run_dir)
@@ -409,7 +413,7 @@ def test_cli_latest_resolves_against_runs_root(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """CLI with --latest <suffix> --runs-root <dir> resolves and runs diagnose."""
-    from spectrafan import diagnose_fam as diag_mod
+    from spectrafan.analysis import diagnose_fam as diag_mod
 
     run_dir = tmp_path / "2026-05-25_000000_fanetmini"
     _write_fanetmini_run_dir(run_dir)
