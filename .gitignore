@@ -15,9 +15,10 @@ __pycache__/
 # marimo per-notebook session cache
 __marimo__/
 
-# Personal Colab launcher notebooks (per-user paths, auth state, etc.)
-# The canonical 8-cell content lives in notebooks/03b_full_repro.py.
+# Personal Colab launcher notebooks (per-user paths, auth state, etc.).
+# The committed boilerplate notebooks/colab_spectrafan.ipynb is the canonical launcher.
 notebooks/colab_*.ipynb
+!notebooks/colab_spectrafan.ipynb
 
 # Data & checkpoints (never commit)
 data/raw/
