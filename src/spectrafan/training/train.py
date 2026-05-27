@@ -29,16 +29,14 @@ import yaml
 from torch.utils.data import DataLoader, Dataset
 
 from spectrafan.config import (
-    DataConfig,
-    ModelConfig,
     OptimConfig,
     RunConfig,
     load_config,
     run_config_to_dict,
 )
-from spectrafan.data import TEMImageNetDataset
+from spectrafan.data import build_dataset
 from spectrafan.data.transforms import eval_transforms, train_transforms
-from spectrafan.models.unet import FANet, FANetMini
+from spectrafan.models import build_model
 from spectrafan.training.losses import BCEDiceLoss
 from spectrafan.training.metrics import RunningMetrics
 
@@ -134,11 +132,9 @@ def make_run_dir(cfg: RunConfig, config_stem: str = "run") -> Path:
 
 
 def build_datasets(cfg: RunConfig) -> tuple[Dataset, Dataset]:
-    train_ds = TEMImageNetDataset(
-        root=cfg.data.root,
+    train_ds = build_dataset(
+        cfg.data,
         split="train",
-        image_size=cfg.data.image_size,
-        splits_dir=cfg.data.splits_dir,
         transforms=train_transforms(
             p_flip=cfg.aug.p_flip,
             max_rot_deg=cfg.aug.max_rot_deg,
@@ -146,18 +142,12 @@ def build_datasets(cfg: RunConfig) -> tuple[Dataset, Dataset]:
             noise_sigma=cfg.aug.noise_sigma,
         ),
         subset_size=cfg.data.subset_size,
-        input_norm=cfg.data.input_norm,
-        in_channels=cfg.data.in_channels,
     )
-    val_ds = TEMImageNetDataset(
-        root=cfg.data.root,
+    val_ds = build_dataset(
+        cfg.data,
         split="val",
-        image_size=cfg.data.image_size,
-        splits_dir=cfg.data.splits_dir,
         transforms=eval_transforms(),
         subset_size=cfg.data.val_subset_size,
-        input_norm=cfg.data.input_norm,
-        in_channels=cfg.data.in_channels,
     )
     return train_ds, val_ds
 
@@ -422,36 +412,6 @@ def _load_resume_state(
     if rng.get("torch_cuda") is not None and torch.cuda.is_available():
         torch.cuda.set_rng_state_all(rng["torch_cuda"])
     return int(ckpt["epoch"]) + 1
-
-
-# ---------------------------------------------------------------------------
-# Model dispatch
-# ---------------------------------------------------------------------------
-
-
-def build_model(model_cfg: ModelConfig, data_cfg: DataConfig) -> torch.nn.Module:
-    """Construct the model class chosen by `model_cfg.name`.
-
-    For `fanetmini`, channels and bottleneck on the config are ignored
-    (the class hardcodes them); only `output_norm` and `fam_conv_kind`
-    flow through. `data_cfg.in_channels` threads the input channel count
-    through both variants so 1-channel STEM inputs are supported.
-    """
-    if model_cfg.name == "fanet":
-        return FANet(
-            in_channels=data_cfg.in_channels,
-            channels=tuple(model_cfg.channels),
-            bottleneck=model_cfg.bottleneck,
-            output_norm=model_cfg.output_norm,
-            conv_kind=model_cfg.fam_conv_kind,
-        )
-    if model_cfg.name == "fanetmini":
-        return FANetMini(
-            in_channels=data_cfg.in_channels,
-            output_norm=model_cfg.output_norm,
-            conv_kind=model_cfg.fam_conv_kind,
-        )
-    raise ValueError(f"unknown model.name: {model_cfg.name!r} (expected 'fanet' or 'fanetmini')")
 
 
 def build_optimizer(model: torch.nn.Module, cfg: OptimConfig) -> torch.optim.Optimizer:

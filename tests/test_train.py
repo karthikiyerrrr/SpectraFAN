@@ -328,7 +328,7 @@ def test_build_model_unknown_name_raises() -> None:
     from spectrafan.training.train import build_model
 
     cfg = ModelConfig(name="not-a-real-model")
-    with pytest.raises(ValueError, match="unknown model.name"):
+    with pytest.raises(ValueError, match="unknown model"):
         build_model(cfg, DataConfig())
 
 
