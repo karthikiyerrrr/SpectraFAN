@@ -19,7 +19,6 @@ import socket
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from shutil import copyfile
@@ -29,48 +28,9 @@ import polars as pl
 import torch
 from torch import nn
 
-from spectrafan.configs import load_raw_config
+from spectrafan.config import ProfileConfig, load_profile_config
 from spectrafan.fam import ConvKind, FAMComplex
 from spectrafan.unet import FANet
-
-
-@dataclass(frozen=True)
-class ProfileSweepEntry:
-    image_size: int
-    batch_size: int
-
-
-@dataclass
-class ProfileConfig:
-    warmup_iters: int = 20
-    measure_iters: int = 100
-    include_chrome_trace: bool = True
-    configs: list[ProfileSweepEntry] = field(default_factory=list)
-    # Inherited from default.yaml `model:` block, used to construct FANet:
-    model_channels: tuple[int, ...] = (64, 128, 256, 512)
-    model_bottleneck: int = 1024
-    model_fam_conv_kind: ConvKind = "depthwise"
-
-
-def load_profile_config(path: Path, overrides: list[str] | None = None) -> ProfileConfig:
-    raw = load_raw_config(path, overrides=overrides)
-    profile_raw = raw.get("profile", {}) or {}
-    model_raw = raw.get("model", {}) or {}
-    sweep = [
-        ProfileSweepEntry(image_size=e["image_size"], batch_size=e["batch_size"])
-        for e in profile_raw.get("configs", [])
-    ]
-    return ProfileConfig(
-        warmup_iters=profile_raw.get("warmup_iters", ProfileConfig.warmup_iters),
-        measure_iters=profile_raw.get("measure_iters", ProfileConfig.measure_iters),
-        include_chrome_trace=profile_raw.get(
-            "include_chrome_trace", ProfileConfig.include_chrome_trace
-        ),
-        configs=sweep,
-        model_channels=tuple(model_raw.get("channels", ProfileConfig.model_channels)),
-        model_bottleneck=model_raw.get("bottleneck", ProfileConfig.model_bottleneck),
-        model_fam_conv_kind=model_raw.get("fam_conv_kind", ProfileConfig.model_fam_conv_kind),
-    )
 
 
 class Timer:
@@ -487,16 +447,16 @@ def _maybe_capture_chrome_trace(
     out_dir: Path,
     device: torch.device,
 ) -> None:
-    if not cfg.include_chrome_trace or not cfg.configs:
+    if not cfg.profile.include_chrome_trace or not cfg.profile.configs:
         return
-    entry = cfg.configs[0]  # smallest config
+    entry = cfg.profile.configs[0]  # smallest config
 
     torch.manual_seed(0)
     model = FANet(
         in_channels=3,
-        channels=cfg.model_channels,
-        bottleneck=cfg.model_bottleneck,
-        conv_kind=cfg.model_fam_conv_kind,
+        channels=tuple(cfg.model.channels),
+        bottleneck=cfg.model.bottleneck,
+        conv_kind=cfg.model.fam_conv_kind,
     ).to(device)
     model.train()
     x = torch.randn(entry.batch_size, 3, entry.image_size, entry.image_size, device=device)
@@ -546,7 +506,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Sweep.
     frames: list[pl.DataFrame] = []
-    for entry in cfg.configs:
+    for entry in cfg.profile.configs:
         print(
             f"[profile] image_size={entry.image_size} batch_size={entry.batch_size}",
             flush=True,
@@ -554,11 +514,11 @@ def main(argv: list[str] | None = None) -> int:
         df = profile_one_config(
             image_size=entry.image_size,
             batch_size=entry.batch_size,
-            channels=cfg.model_channels,
-            bottleneck=cfg.model_bottleneck,
-            fam_conv_kind=cfg.model_fam_conv_kind,
-            warmup_iters=cfg.warmup_iters,
-            measure_iters=cfg.measure_iters,
+            channels=tuple(cfg.model.channels),
+            bottleneck=cfg.model.bottleneck,
+            fam_conv_kind=cfg.model.fam_conv_kind,
+            warmup_iters=cfg.profile.warmup_iters,
+            measure_iters=cfg.profile.measure_iters,
             device=device,
             seed=args.seed,
             include_backward=args.backward,

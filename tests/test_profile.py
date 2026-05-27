@@ -12,14 +12,12 @@ import polars as pl
 import pytest
 import torch
 
+from spectrafan.config import ProfileConfig, load_profile_config
 from spectrafan.fam import FAMComplex
 from spectrafan.profile import (
     FAMProfiled,
-    ProfileConfig,
-    ProfileSweepEntry,
     Timer,
     compute_summary,
-    load_profile_config,
     profile_one_config,
     write_env_json,
 )
@@ -43,16 +41,17 @@ def test_load_profile_config_reads_default_file() -> None:
     cfg = load_profile_config(Path("configs/profile.yaml"))
 
     assert isinstance(cfg, ProfileConfig)
-    assert cfg.warmup_iters == 20
-    assert cfg.measure_iters == 100
-    assert cfg.include_chrome_trace is True
-    assert cfg.configs == [
-        ProfileSweepEntry(image_size=256, batch_size=4),
-        ProfileSweepEntry(image_size=256, batch_size=16),
-    ]
-    assert cfg.model_channels == (64, 128, 256, 512)
-    assert cfg.model_bottleneck == 1024
-    assert cfg.model_fam_conv_kind == "depthwise"
+    assert cfg.profile.warmup_iters == 20
+    assert cfg.profile.measure_iters == 100
+    assert cfg.profile.include_chrome_trace is True
+    assert len(cfg.profile.configs) == 2
+    assert cfg.profile.configs[0].image_size == 256
+    assert cfg.profile.configs[0].batch_size == 4
+    assert cfg.profile.configs[1].image_size == 256
+    assert cfg.profile.configs[1].batch_size == 16
+    assert list(cfg.model.channels) == [64, 128, 256, 512]
+    assert cfg.model.bottleneck == 1024
+    assert cfg.model.fam_conv_kind == "depthwise"
 
 
 def test_load_profile_config_applies_overrides() -> None:
@@ -60,8 +59,8 @@ def test_load_profile_config_applies_overrides() -> None:
         Path("configs/profile.yaml"),
         overrides=["profile.warmup_iters=3", "profile.measure_iters=5"],
     )
-    assert cfg.warmup_iters == 3
-    assert cfg.measure_iters == 5
+    assert cfg.profile.warmup_iters == 3
+    assert cfg.profile.measure_iters == 5
 
 
 def test_timer_cpu_measures_positive_elapsed() -> None:
