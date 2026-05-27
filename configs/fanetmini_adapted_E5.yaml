@@ -1,0 +1,55 @@
+# Adapted track E5: paired AdamW+cosine (from E2) + BS=16 (from E3) at 200 epochs.
+#
+# E1, E2, E3, E4 all REVERTED individually — no single recipe or representation
+# knob moved val_iou past the +0.005 threshold. E5 abandons the clean
+# single-knob methodology to test whether the *interaction* between a modern
+# optimizer (AdamW+cosine+warmup) and a longer budget can break the ~0.82
+# ceiling that E1-E4 all hit.
+#
+# Hypothesis: E2 was the only run that broke baseline's train_loss floor
+# (0.114 vs ~0.12). Its val_iou peaked at e19 mid-cosine-decay — likely
+# under-budgeted, schedule decayed too fast. Cosine over 200 epochs keeps
+# LR near peak much longer (at e25 LR is ~9.5e-4 vs ~5e-4 for the 50-epoch
+# schedule). Combined with BS=16's compute headroom, this is the closest
+# thing to a "kitchen sink modern recipe" probe of the ceiling.
+#
+# Outcomes:
+# - val_iou >= 0.8265 -> The greedy ablation's revert decisions missed an
+#   interaction effect. E5 becomes the winning recipe for the adapted track.
+# - val_iou stays at ~0.82 -> Architecture-bound or label-bound. E6 (full
+#   FANet transfer) becomes the decisive test.
+#
+# Early-stop checkpoints (monitor in Colab stdout):
+# - train_loss should be below 0.12 by e30
+# - val_iou should be above 0.80 by e25
+# - train_iou should exceed val_iou by e40 (gap flips positive — E2's signal)
+# If any fails, kill and write notes from the partial trajectory.
+#
+# NOTE: extends default.yaml directly (the loader only resolves one level).
+# Why lr=1e-3 (not 4e-3 linear-scaled for the 4x batch): AdamW's adaptive
+# per-parameter LR absorbs batch-size changes better than SGD/RMSprop. Keeping
+# lr=1e-3 means the only knob changing on the LR axis is the schedule length
+# (cosine 200 vs cosine 50), not the peak. One less confound.
+
+extends: default.yaml
+
+model:
+  name: fanetmini
+
+data:
+  batch_size: 16
+  num_workers: 8
+
+optim:
+  optimizer: adamw
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  betas: [0.9, 0.999]
+  schedule: cosine
+  warmup_epochs: 5
+  min_lr: 1.0e-5
+
+train:
+  epochs: 200
+  amp: true
+  checkpoint_every: 25
