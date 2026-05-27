@@ -19,6 +19,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from spectrafan.data import TEMImageNetDataset
 from spectrafan.data.transforms import eval_transforms
+from spectrafan.manifest import write_manifest
 from spectrafan.training.metrics import RunningMetrics
 from spectrafan.training.train import build_model, load_config, resolve_device
 
@@ -132,6 +133,12 @@ def predict_run(run_dir: Path) -> None:
         "test_size": int(test_size),
     }
     (run_dir / "test_metrics.json").write_text(json.dumps(metrics_blob, indent=2))
+    _tm = json.loads((run_dir / "test_metrics.json").read_text())
+    write_manifest(
+        run_dir,
+        "predict",
+        headline={"test_iou": _tm["test_iou"], "test_dice": _tm["test_dice"]},
+    )
 
 
 def _main() -> None:

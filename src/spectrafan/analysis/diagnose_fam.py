@@ -24,6 +24,7 @@ from torch.utils.data import DataLoader
 from spectrafan.analysis.predict import find_latest_run
 from spectrafan.data import TEMImageNetDataset
 from spectrafan.data.transforms import eval_transforms
+from spectrafan.manifest import write_manifest
 from spectrafan.models.fam import FAMComplex
 from spectrafan.training.metrics import RunningMetrics
 from spectrafan.training.train import build_model, load_config, resolve_device
@@ -109,6 +110,12 @@ def diagnose_run(run_dir: Path) -> None:
             },
             indent=2,
         )
+    )
+    _diag = json.loads(json_path.read_text())
+    write_manifest(
+        run_dir,
+        "diagnose",
+        headline={"fam_as_trained_iou": _diag["val_iou"]["as_trained"]},
     )
 
 

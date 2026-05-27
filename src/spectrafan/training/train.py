@@ -36,6 +36,7 @@ from spectrafan.config import (
 )
 from spectrafan.data import build_dataset
 from spectrafan.data.transforms import eval_transforms, train_transforms
+from spectrafan.manifest import write_manifest
 from spectrafan.models import build_model
 from spectrafan.training.losses import BCEDiceLoss
 from spectrafan.training.metrics import RunningMetrics
@@ -583,6 +584,18 @@ def fit(cfg: RunConfig, config_stem: str = "run", resume_from: Path | None = Non
                 )
             best_val_iou = val_stats["iou"]
 
+    _mdf = pl.read_parquet(run_dir / "metrics.parquet")
+    _best = _mdf["val_iou"].arg_max()
+    write_manifest(
+        run_dir,
+        "train",
+        model=cfg.model.name,
+        dataset=cfg.data.dataset,
+        headline={
+            "best_val_iou": float(_mdf["val_iou"][_best]),
+            "best_epoch": int(_mdf["epoch"][_best]),
+        },
+    )
     return run_dir
 
 

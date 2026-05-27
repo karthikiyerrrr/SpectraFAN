@@ -29,6 +29,7 @@ import torch
 from torch import nn
 
 from spectrafan.config import ProfileConfig, load_profile_config
+from spectrafan.manifest import write_manifest
 from spectrafan.models.fam import ConvKind, FAMComplex
 from spectrafan.models.unet import FANet
 
@@ -530,6 +531,17 @@ def main(argv: list[str] | None = None) -> int:
 
     summary = compute_summary(timings)
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
+
+    _summary = json.loads((out_dir / "summary.json").read_text())
+    write_manifest(
+        out_dir,
+        "profile",
+        model=cfg.model.name,
+        headline={
+            "fams_pct_of_fwd": _summary.get("fams_pct_of_fwd"),
+            "total_fwd_us": _summary.get("total_fwd_us"),
+        },
+    )
 
     _maybe_capture_chrome_trace(cfg, out_dir, device)
 
