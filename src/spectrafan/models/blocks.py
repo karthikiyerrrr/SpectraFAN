@@ -69,7 +69,7 @@ class OutputConv(nn.Module):
     dropped from the module so that the training loop can use
     BCEWithLogitsLoss for numerical stability; downstream code applies
     ``torch.sigmoid`` explicitly when probabilities are needed (e.g. metrics,
-    visualization). See docs/superpowers/notes/03_architecture_deviations.md.
+    visualization).
     """
 
     def __init__(

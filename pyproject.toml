@@ -21,6 +21,12 @@ dependencies = [
     "omegaconf>=2.3.0",
 ]
 
+[project.scripts]
+spectrafan-train = "spectrafan.training.train:main"
+spectrafan-profile = "spectrafan.analysis.profile:main"
+spectrafan-diagnose = "spectrafan.analysis.diagnose_fam:main"
+spectrafan-predict = "spectrafan.analysis.predict:main"
+
 [dependency-groups]
 dev = [
     "fvcore>=0.1.5.post20221221",

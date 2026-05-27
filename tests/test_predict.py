@@ -197,7 +197,7 @@ def test_predict_cli_requires_run_or_latest(monkeypatch) -> None:
 
     monkeypatch.setattr("sys.argv", ["spectrafan.predict"])
     with pytest.raises(SystemExit):
-        predict_mod._main()
+        predict_mod.main()
 
 
 def test_predict_cli_rejects_both_run_and_latest(monkeypatch, tmp_path: Path) -> None:
@@ -209,7 +209,7 @@ def test_predict_cli_rejects_both_run_and_latest(monkeypatch, tmp_path: Path) ->
         ["spectrafan.predict", "--run", str(tmp_path), "--latest", "fanetmini"],
     )
     with pytest.raises(SystemExit):
-        predict_mod._main()
+        predict_mod.main()
 
 
 def test_predict_cli_runs_predict_with_run_flag(
@@ -223,7 +223,7 @@ def test_predict_cli_runs_predict_with_run_flag(
     monkeypatch.setattr(predict_mod, "TEMImageNetDataset", _FakeTEMDataset)
     monkeypatch.setattr("sys.argv", ["spectrafan.predict", "--run", str(run_dir)])
 
-    predict_mod._main()
+    predict_mod.main()
 
     assert (run_dir / "predictions.npz").is_file()
     assert (run_dir / "test_metrics.json").is_file()
@@ -249,6 +249,6 @@ def test_predict_cli_latest_resolves_against_runs_root(
         ],
     )
 
-    predict_mod._main()
+    predict_mod.main()
 
     assert (run_dir / "predictions.npz").is_file()

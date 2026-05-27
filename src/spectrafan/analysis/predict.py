@@ -1,8 +1,8 @@
 """Generate inference artifacts for a finished training run.
 
 CLI:
-    uv run python -m spectrafan.analysis.predict --run runs/<id>
-    uv run python -m spectrafan.analysis.predict --latest fanetmini
+    uv run spectrafan-predict --run runs/<id>
+    uv run spectrafan-predict --latest fanetmini
 
 Writes <run>/predictions.npz (16 val + 16 test sample preds) and
 <run>/test_metrics.json (IoU/Dice/pixel-acc over the full test split).
@@ -141,10 +141,10 @@ def predict_run(run_dir: Path) -> None:
     )
 
 
-def _main() -> None:
+def main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(prog="python -m spectrafan.analysis.predict")
+    parser = argparse.ArgumentParser(prog="spectrafan-predict")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--run", type=Path, help="Path to a run directory.")
     group.add_argument(
@@ -165,4 +165,4 @@ def _main() -> None:
 
 
 if __name__ == "__main__":
-    _main()
+    main()

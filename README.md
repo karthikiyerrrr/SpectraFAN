@@ -64,11 +64,11 @@ uv run marimo edit notebooks/01_data.py
 ```text
 SpectraFAN/
 ├── src/spectrafan/      # the package
-│   ├── fam.py           # Frequency Attention Module
-│   ├── unet.py          # U-Net backbone with FAM on skip connections
-│   ├── data.py          # TEMImageNet dataset loader
-│   ├── train.py         # training loop, metrics, losses
-│   └── profile.py       # per-op timing harness
+│   ├── models/          # FANet, FANetMini, FAM, blocks
+│   ├── data/            # TEMImageNet dataset loader and transforms
+│   ├── training/        # training loop, losses, metrics
+│   └── analysis/        # predict, profile, diagnose_fam
+├── scripts/             # build_split.py (data preparation)
 ├── notebooks/           # marimo
 ├── tests/               # numerical + regression tests
 ├── configs/             # one YAML per run
@@ -86,6 +86,12 @@ you can't `import spectrafan` from the repo root.
 uv sync                                # install / refresh dependencies
 uv add <package>                       # add a runtime dependency
 uv add --dev <package>                 # add a dev dependency
+
+# Training and analysis tools
+uv run spectrafan-train --config configs/smoke.yaml
+uv run spectrafan-predict --run runs/<id>
+uv run spectrafan-profile --config configs/smoke.yaml
+uv run spectrafan-diagnose --run runs/<id>
 
 # Notebooks
 uv run marimo edit notebooks/<file>    # edit a notebook

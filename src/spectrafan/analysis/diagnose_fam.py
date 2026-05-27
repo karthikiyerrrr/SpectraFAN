@@ -5,8 +5,8 @@ fam_skip_fft, fam_zero), and writes <run_dir>/fam_stats.parquet plus
 <run_dir>/fam_diagnosis.json. See docs/superpowers/specs/2026-05-25-fam-postmortem-design.md.
 
 CLI:
-    uv run python -m spectrafan.analysis.diagnose_fam --run runs/<id>
-    uv run python -m spectrafan.analysis.diagnose_fam --latest fanetmini
+    uv run spectrafan-diagnose --run runs/<id>
+    uv run spectrafan-diagnose --latest fanetmini
 """
 
 from __future__ import annotations
@@ -256,10 +256,10 @@ def _run_val_once(model: torch.nn.Module, loader: DataLoader, device: torch.devi
     return float(rm.compute()["iou"])
 
 
-def _main() -> None:
+def main() -> None:
     import argparse
 
-    parser = argparse.ArgumentParser(prog="python -m spectrafan.analysis.diagnose_fam")
+    parser = argparse.ArgumentParser(prog="spectrafan-diagnose")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--run", type=Path, help="Path to a run directory.")
     group.add_argument(
@@ -280,4 +280,4 @@ def _main() -> None:
 
 
 if __name__ == "__main__":
-    _main()
+    main()

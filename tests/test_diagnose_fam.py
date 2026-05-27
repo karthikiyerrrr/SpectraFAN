@@ -373,7 +373,7 @@ def test_cli_requires_run_or_latest(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("sys.argv", ["spectrafan.diagnose_fam"])
     with pytest.raises(SystemExit):
-        diag_mod._main()
+        diag_mod.main()
 
 
 def test_cli_rejects_both_run_and_latest(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -391,7 +391,7 @@ def test_cli_rejects_both_run_and_latest(monkeypatch: pytest.MonkeyPatch, tmp_pa
         ],
     )
     with pytest.raises(SystemExit):
-        diag_mod._main()
+        diag_mod.main()
 
 
 def test_cli_runs_diagnose_with_run_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -403,7 +403,7 @@ def test_cli_runs_diagnose_with_run_flag(tmp_path: Path, monkeypatch: pytest.Mon
     monkeypatch.setattr(diag_mod, "TEMImageNetDataset", _FakeTEMDataset)
     monkeypatch.setattr("sys.argv", ["spectrafan.diagnose_fam", "--run", str(run_dir)])
 
-    diag_mod._main()
+    diag_mod.main()
 
     assert (run_dir / "fam_stats.parquet").is_file()
     assert (run_dir / "fam_diagnosis.json").is_file()
@@ -429,6 +429,6 @@ def test_cli_latest_resolves_against_runs_root(
         ],
     )
 
-    diag_mod._main()
+    diag_mod.main()
 
     assert (run_dir / "fam_stats.parquet").is_file()

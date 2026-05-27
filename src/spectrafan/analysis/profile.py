@@ -7,7 +7,8 @@ ifft / final) -- over a sweep of (image_size, batch_size) configs.
 The locked measurement protocol: 20 warm-up + 100 measured iterations,
 `torch.cuda.synchronize()` before each timer batch, median + IQR reported.
 
-See docs/superpowers/specs/2026-05-22-fam-profiling-design.md for the design.
+CLI:
+    uv run spectrafan-profile --config configs/smoke.yaml [--backward] [--output runs/my_profile]
 """
 
 from __future__ import annotations
@@ -473,7 +474,7 @@ def _maybe_capture_chrome_trace(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m spectrafan.analysis.profile")
+    parser = argparse.ArgumentParser(prog="spectrafan-profile")
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--backward", action="store_true")
