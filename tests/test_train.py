@@ -9,15 +9,16 @@ import pytest
 import torch
 from torch.utils.data import Dataset
 
-from spectrafan.train import (
+from spectrafan.config import (
     AugConfig,
     DataConfig,
+    LossConfig,
     ModelConfig,
     OptimConfig,
     RunConfig,
     TrainConfig,
-    fit,
 )
+from spectrafan.train import fit
 
 
 class _SyntheticPairs(Dataset):
@@ -42,7 +43,7 @@ class _SyntheticPairs(Dataset):
 def _tiny_cfg(tmp_path: Path) -> RunConfig:
     return RunConfig(
         model=ModelConfig(
-            channels=(8, 16, 32, 64),
+            channels=[8, 16, 32, 64],
             bottleneck=128,
             fam_conv_kind="depthwise",
         ),
@@ -52,7 +53,7 @@ def _tiny_cfg(tmp_path: Path) -> RunConfig:
             batch_size=4,
             subset_size=None,
             val_subset_size=None,
-            splits_dir=Path("data/splits/temimagenet_v1"),
+            splits_dir=str(tmp_path / "splits"),
         ),
         aug=AugConfig(),
         optim=OptimConfig(lr=1e-3),  # bumped from 1e-5 so 3 epochs is enough to move the loss
@@ -60,9 +61,8 @@ def _tiny_cfg(tmp_path: Path) -> RunConfig:
             epochs=3,
             seed=0,
             device="cpu",
-            run_root=tmp_path / "runs",
-            loss_ce_weight=0.5,
-            loss_dice_weight=0.5,
+            run_root=str(tmp_path / "runs"),
+            loss=LossConfig(ce_weight=0.5, dice_weight=0.5),
         ),
     )
 
@@ -343,10 +343,10 @@ def test_build_model_fanetmini_ignores_channels_and_bottleneck() -> None:
 
 def test_optim_config_new_field_defaults() -> None:
     """The 4 new OptimConfig fields default to backward-compatible values."""
-    from spectrafan.train import OptimConfig
+    from spectrafan.config import OptimConfig
 
     cfg = OptimConfig()
-    assert cfg.betas == (0.9, 0.999)
+    assert cfg.betas == [0.9, 0.999]
     assert cfg.schedule == "exponential"
     assert cfg.warmup_epochs == 0
     assert cfg.min_lr == 0.0
@@ -372,7 +372,7 @@ def test_load_config_passes_new_optim_fields(tmp_path: Path) -> None:
     assert cfg.optim.optimizer == "adamw"
     assert cfg.optim.lr == 1.0e-4
     assert cfg.optim.weight_decay == 1.0e-4
-    assert cfg.optim.betas == (0.9, 0.95)
+    assert cfg.optim.betas == [0.9, 0.95]
     assert cfg.optim.schedule == "cosine"
     assert cfg.optim.warmup_epochs == 5
     assert cfg.optim.min_lr == 1.0e-6
@@ -547,8 +547,8 @@ def test_fanetmini_sweep_configs_load() -> None:
     assert cfg_b.train.epochs == 50
     assert cfg_b.train.amp is True
     assert cfg_b.train.deterministic is False
-    assert cfg_b.train.loss_ce_weight == 0.5
-    assert cfg_b.train.loss_dice_weight == 0.5
+    assert cfg_b.train.loss.ce_weight == 0.5
+    assert cfg_b.train.loss.dice_weight == 0.5
 
     cfg_c = load_config(Path("configs/fanetmini_sweep_C.yaml"))
     assert cfg_c.model.name == "fanetmini"
@@ -557,15 +557,15 @@ def test_fanetmini_sweep_configs_load() -> None:
     assert cfg_c.optim.optimizer == "adamw"
     assert cfg_c.optim.lr == 1.0e-4
     assert cfg_c.optim.weight_decay == 1.0e-4
-    assert cfg_c.optim.betas == (0.9, 0.999)
+    assert cfg_c.optim.betas == [0.9, 0.999]
     assert cfg_c.optim.schedule == "cosine"
     assert cfg_c.optim.warmup_epochs == 5
     assert cfg_c.optim.min_lr == 1.0e-6
     assert cfg_c.train.epochs == 50
     assert cfg_c.train.amp is True
     assert cfg_c.train.deterministic is False
-    assert cfg_c.train.loss_ce_weight == 0.5
-    assert cfg_c.train.loss_dice_weight == 0.5
+    assert cfg_c.train.loss.ce_weight == 0.5
+    assert cfg_c.train.loss.dice_weight == 0.5
 
     cfg_d = load_config(Path("configs/fanetmini_sweep_D.yaml"))
     assert cfg_d.model.name == "fanetmini"
@@ -575,8 +575,8 @@ def test_fanetmini_sweep_configs_load() -> None:
     assert cfg_d.optim.warmup_epochs == 5
     assert cfg_d.train.amp is True  # inherited from C
     assert cfg_d.train.deterministic is False  # inherited from C
-    assert cfg_d.train.loss_ce_weight == 0.3
-    assert cfg_d.train.loss_dice_weight == 0.7
+    assert cfg_d.train.loss.ce_weight == 0.3
+    assert cfg_d.train.loss.dice_weight == 0.7
 
 
 def test_data_config_accepts_input_norm_and_in_channels() -> None:

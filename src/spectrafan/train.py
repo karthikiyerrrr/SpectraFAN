@@ -1,7 +1,8 @@
 """Training entry point for FANet.
 
 Composes TEMImageNetDataset + augmentation + BCEDiceLoss + RunningMetrics +
-RMSprop + ExponentialLR into ``fit(cfg)``. Writes per-epoch metrics to
+a configurable optimizer (RMSprop or AdamW) + LR scheduler into ``fit(cfg)``.
+Writes per-epoch metrics to
 ``runs/<id>/metrics.parquet`` and checkpoints ``last.pt`` / ``best.pt``.
 
 CLI:
@@ -19,167 +20,27 @@ import platform
 import socket
 import subprocess
 import time
-from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
 
 import polars as pl
 import torch
 import yaml
 from torch.utils.data import DataLoader, Dataset
 
-from spectrafan.data import InputNorm, TEMImageNetDataset
-from spectrafan.fam import ConvKind
+from spectrafan.config import (
+    DataConfig,
+    ModelConfig,
+    OptimConfig,
+    RunConfig,
+    load_config,
+    run_config_to_dict,
+)
+from spectrafan.data import TEMImageNetDataset
 from spectrafan.losses import BCEDiceLoss
 from spectrafan.metrics import RunningMetrics
 from spectrafan.transforms import eval_transforms, train_transforms
-from spectrafan.unet import FANet, FANetMini, OutputNorm
-
-# ---------------------------------------------------------------------------
-# Config dataclasses
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class ModelConfig:
-    name: str = "fanet"  # "fanet" | "fanetmini"; see fit() for dispatch
-    channels: tuple[int, ...] = (64, 128, 256, 512)
-    bottleneck: int = 1024
-    fam_conv_kind: ConvKind = "depthwise"
-    output_norm: OutputNorm = "bn"
-
-
-@dataclass
-class DataConfig:
-    dataset: str = "temimagenet"
-    root: Path = Path("data/raw/temimagenet")
-    image_size: int = 512
-    batch_size: int = 4
-    subset_size: int | None = None
-    val_subset_size: int | None = None
-    splits_dir: Path = Path("data/splits/temimagenet_v1")
-    num_workers: int = 2
-    input_norm: InputNorm = "none"
-    in_channels: Literal[1, 3] = 3
-
-
-@dataclass
-class AugConfig:
-    p_flip: float = 0.5
-    max_rot_deg: float = 15.0
-    zoom_range: tuple[float, float] = (0.9, 1.1)
-    noise_sigma: float = 0.01
-
-
-@dataclass
-class OptimConfig:
-    optimizer: str = "rmsprop"  # rmsprop | adamw
-    lr: float = 1.0e-5
-    decay: float = 0.99  # ExponentialLR gamma
-    weight_decay: float = 1.0e-8
-    momentum: float = 0.999  # rmsprop only
-    betas: tuple[float, float] = (0.9, 0.999)  # adamw only
-    schedule: str = "exponential"  # exponential | cosine
-    warmup_epochs: int = 0  # 0 disables warmup
-    min_lr: float = 0.0  # CosineAnnealingLR eta_min
-
-
-@dataclass
-class TrainConfig:
-    epochs: int = 200
-    seed: int = 0
-    device: str = "auto"  # "auto" | "cuda" | "mps" | "cpu"
-    run_root: Path = Path("runs")
-    loss_ce_weight: float = 0.5
-    loss_dice_weight: float = 0.5
-    amp: bool = False
-    checkpoint_every: int = 10
-    # When False, skips the determinism flags in set_global_seed (enables
-    # cudnn.benchmark, drops use_deterministic_algorithms). Trades bitwise
-    # seed reproducibility for ~5-20x conv kernel speedup on shape/dtype
-    # combinations where deterministic algorithms are slow. Default True
-    # preserves the locked-reproduction behavior.
-    deterministic: bool = True
-
-
-@dataclass
-class RunConfig:
-    model: ModelConfig = field(default_factory=ModelConfig)
-    data: DataConfig = field(default_factory=DataConfig)
-    aug: AugConfig = field(default_factory=AugConfig)
-    optim: OptimConfig = field(default_factory=OptimConfig)
-    train: TrainConfig = field(default_factory=TrainConfig)
-
-
-# ---------------------------------------------------------------------------
-# Config loading
-# ---------------------------------------------------------------------------
-
-
-def load_config(path: Path, overrides: list[str] | None = None) -> RunConfig:
-    """Load a YAML config with `extends:` support and `key.subkey=value` overrides."""
-    from spectrafan.configs import load_raw_config
-
-    raw = load_raw_config(path, overrides=overrides)
-    return _dict_to_run_config(raw)
-
-
-def _dict_to_run_config(d: dict) -> RunConfig:
-    model = ModelConfig(
-        name=d.get("model", {}).get("name", ModelConfig.name),
-        channels=tuple(d.get("model", {}).get("channels", ModelConfig.channels)),
-        bottleneck=d.get("model", {}).get("bottleneck", ModelConfig.bottleneck),
-        fam_conv_kind=d.get("model", {}).get("fam_conv_kind", ModelConfig.fam_conv_kind),
-        output_norm=d.get("model", {}).get("output_norm", ModelConfig.output_norm),
-    )
-    data_raw = d.get("data", {}) or {}
-    data = DataConfig(
-        dataset=data_raw.get("dataset", DataConfig.dataset),
-        root=Path(data_raw.get("root", DataConfig.root)),
-        image_size=data_raw.get("image_size", DataConfig.image_size),
-        batch_size=data_raw.get("batch_size", DataConfig.batch_size),
-        subset_size=data_raw.get("subset_size", None),
-        val_subset_size=data_raw.get("val_subset_size", None),
-        splits_dir=Path(data_raw.get("splits_dir", DataConfig.splits_dir)),
-        num_workers=data_raw.get("num_workers", DataConfig.num_workers),
-        input_norm=data_raw.get("input_norm", DataConfig.input_norm),
-        in_channels=data_raw.get("in_channels", DataConfig.in_channels),
-    )
-    aug_raw = d.get("aug", {}) or {}
-    aug = AugConfig(
-        p_flip=aug_raw.get("p_flip", AugConfig.p_flip),
-        max_rot_deg=aug_raw.get("max_rot_deg", AugConfig.max_rot_deg),
-        zoom_range=tuple(aug_raw.get("zoom_range", AugConfig.zoom_range)),
-        noise_sigma=aug_raw.get("noise_sigma", AugConfig.noise_sigma),
-    )
-    optim_raw = d.get("optim", {}) or {}
-    optim_cfg = OptimConfig(
-        optimizer=optim_raw.get("optimizer", OptimConfig.optimizer),
-        lr=optim_raw.get("lr", OptimConfig.lr),
-        decay=optim_raw.get("decay", OptimConfig.decay),
-        weight_decay=optim_raw.get("weight_decay", OptimConfig.weight_decay),
-        momentum=optim_raw.get("momentum", OptimConfig.momentum),
-        betas=tuple(optim_raw.get("betas", OptimConfig.betas)),
-        schedule=optim_raw.get("schedule", OptimConfig.schedule),
-        warmup_epochs=optim_raw.get("warmup_epochs", OptimConfig.warmup_epochs),
-        min_lr=optim_raw.get("min_lr", OptimConfig.min_lr),
-    )
-    train_raw = d.get("train", {}) or {}
-    loss_raw = train_raw.get("loss", {}) or {}
-    train_cfg = TrainConfig(
-        epochs=train_raw.get("epochs", TrainConfig.epochs),
-        seed=train_raw.get("seed", TrainConfig.seed),
-        device=train_raw.get("device", TrainConfig.device),
-        run_root=Path(train_raw.get("run_root", TrainConfig.run_root)),
-        loss_ce_weight=loss_raw.get("ce_weight", TrainConfig.loss_ce_weight),
-        loss_dice_weight=loss_raw.get("dice_weight", TrainConfig.loss_dice_weight),
-        amp=train_raw.get("amp", TrainConfig.amp),
-        checkpoint_every=train_raw.get("checkpoint_every", TrainConfig.checkpoint_every),
-        deterministic=train_raw.get("deterministic", TrainConfig.deterministic),
-    )
-    return RunConfig(model=model, data=data, aug=aug, optim=optim_cfg, train=train_cfg)
-
+from spectrafan.unet import FANet, FANetMini
 
 # ---------------------------------------------------------------------------
 # Device + seed + run dir
@@ -261,21 +122,10 @@ def _capture_env(device: torch.device, amp_enabled: bool) -> dict:
 
 def make_run_dir(cfg: RunConfig, config_stem: str = "run") -> Path:
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-    run_dir = cfg.train.run_root / f"{timestamp}_{config_stem}"
+    run_dir = Path(cfg.train.run_root) / f"{timestamp}_{config_stem}"
     run_dir.mkdir(parents=True, exist_ok=False)
-    (run_dir / "config.yaml").write_text(yaml.safe_dump(_run_config_to_dict(cfg)))
+    (run_dir / "config.yaml").write_text(yaml.safe_dump(run_config_to_dict(cfg)))
     return run_dir
-
-
-def _run_config_to_dict(cfg: RunConfig) -> dict:
-    d = asdict(cfg)
-    # asdict turns tuples into tuples and Paths into Paths; YAML wants lists and strings.
-    d["model"]["channels"] = list(d["model"]["channels"])
-    d["aug"]["zoom_range"] = list(d["aug"]["zoom_range"])
-    d["data"]["root"] = str(d["data"]["root"])
-    d["data"]["splits_dir"] = str(d["data"]["splits_dir"])
-    d["train"]["run_root"] = str(d["train"]["run_root"])
-    return d
 
 
 # ---------------------------------------------------------------------------
@@ -292,7 +142,7 @@ def build_datasets(cfg: RunConfig) -> tuple[Dataset, Dataset]:
         transforms=train_transforms(
             p_flip=cfg.aug.p_flip,
             max_rot_deg=cfg.aug.max_rot_deg,
-            zoom_range=cfg.aug.zoom_range,
+            zoom_range=tuple(cfg.aug.zoom_range),
             noise_sigma=cfg.aug.noise_sigma,
         ),
         subset_size=cfg.data.subset_size,
@@ -528,7 +378,7 @@ def _save_checkpoint(
             "scheduler_state_dict": scheduler.state_dict(),
             "epoch": epoch,
             "val_iou": val_iou,
-            "config": _run_config_to_dict(cfg),
+            "config": run_config_to_dict(cfg),
             "rng": {
                 "python": _random.getstate(),
                 "numpy": _np.random.get_state(),
@@ -684,7 +534,7 @@ def fit(cfg: RunConfig, config_stem: str = "run", resume_from: Path | None = Non
     model = build_model(cfg.model, cfg.data).to(device)
 
     loss_fn = BCEDiceLoss(
-        ce_weight=cfg.train.loss_ce_weight, dice_weight=cfg.train.loss_dice_weight
+        ce_weight=cfg.train.loss.ce_weight, dice_weight=cfg.train.loss.dice_weight
     )
     optimizer = build_optimizer(model, cfg.optim)
     scheduler = build_scheduler(optimizer, cfg.optim, cfg.train.epochs)

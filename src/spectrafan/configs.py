@@ -1,8 +1,8 @@
-"""Shared YAML config loader with `extends:` support and dotted overrides.
+"""Backward-compatibility shim: load_raw_config for spectrafan.profile.
 
-Used by both spectrafan.train and spectrafan.profile so the two CLIs share
-exactly the same merge + override semantics. The dict shape returned here is
-domain-agnostic; each caller projects it onto its own dataclass(es).
+The config schema and loader moved to spectrafan.config (Task 1.2).
+This module remains to avoid touching profile.py, which calls load_raw_config
+to get a plain dict for its own ProfileConfig construction.
 """
 
 from __future__ import annotations
@@ -25,7 +25,6 @@ def deep_merge(base: dict, overlay: dict) -> dict:
 
 
 def _coerce(value: str) -> Any:
-    """Parse override values as YAML scalars (bool/int/float/str/list)."""
     return yaml.safe_load(value)
 
 
@@ -48,13 +47,7 @@ def apply_overrides(d: dict, overrides: list[str]) -> dict:
 
 
 def load_raw_config(path: Path, overrides: list[str] | None = None) -> dict:
-    """Load a YAML file, resolve one level of `extends:`, apply overrides.
-
-    Only the immediate `extends:` parent is resolved. If the resolved parent
-    itself contains `extends:`, that nested directive is silently ignored
-    (the key passes through into the merged dict). Multi-level extends chains
-    are not supported; revisit if a use case appears.
-    """
+    """Load a YAML file, resolve one level of `extends:`, apply overrides."""
     raw = yaml.safe_load(path.read_text()) or {}
     if "extends" in raw:
         base_path = path.parent / raw.pop("extends")
