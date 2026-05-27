@@ -17,11 +17,13 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 
+from spectrafan.config import load_config
 from spectrafan.data import TEMImageNetDataset
 from spectrafan.data.transforms import eval_transforms
 from spectrafan.manifest import write_manifest
+from spectrafan.models import build_model
 from spectrafan.training.metrics import RunningMetrics
-from spectrafan.training.train import build_model, load_config, resolve_device
+from spectrafan.training.train import resolve_device
 
 SAMPLE_SIZE = 16
 

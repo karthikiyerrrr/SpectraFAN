@@ -33,6 +33,7 @@ from spectrafan.config import ProfileConfig, load_profile_config
 from spectrafan.manifest import write_manifest
 from spectrafan.models.fam import ConvKind, FAMComplex
 from spectrafan.models.unet import FANet
+from spectrafan.training.train import resolve_device
 
 
 class Timer:
@@ -434,16 +435,6 @@ def write_env_json(path: Path, device: torch.device) -> None:
     path.write_text(json.dumps(data, indent=2))
 
 
-def _resolve_device(name: str) -> torch.device:
-    if name == "auto":
-        if torch.cuda.is_available():
-            return torch.device("cuda")
-        if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
-            return torch.device("mps")
-        return torch.device("cpu")
-    return torch.device(name)
-
-
 def _maybe_capture_chrome_trace(
     cfg: ProfileConfig,
     out_dir: Path,
@@ -484,7 +475,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     cfg = load_profile_config(args.config, overrides=args.override)
-    device = _resolve_device(args.device)
+    device = resolve_device(args.device)
 
     if args.output is None:
         ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
