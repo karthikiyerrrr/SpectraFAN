@@ -1,7 +1,7 @@
 # FANetMini sweep config B (OFAT step 1: batch size up + matched momentum).
 # Tests whether escaping the BS=4 + momentum=0.999 over-smoothing alone breaks the plateau.
 
-extends: fanetmini.yaml
+extends: ../fanetmini.yaml
 
 data:
   batch_size: 16

@@ -548,7 +548,7 @@ def test_fanetmini_sweep_configs_load() -> None:
     expected OptimConfig + DataConfig + loss values from the spec's sweep matrix."""
     from spectrafan.config import load_config
 
-    cfg_b = load_config(Path("configs/fanetmini_sweep_B.yaml"))
+    cfg_b = load_config(Path("configs/archive/fanetmini_sweep_B.yaml"))
     assert cfg_b.model.name == "fanetmini"
     assert cfg_b.data.batch_size == 16
     assert cfg_b.data.num_workers == 8
@@ -562,7 +562,7 @@ def test_fanetmini_sweep_configs_load() -> None:
     assert cfg_b.train.loss.ce_weight == 0.5
     assert cfg_b.train.loss.dice_weight == 0.5
 
-    cfg_c = load_config(Path("configs/fanetmini_sweep_C.yaml"))
+    cfg_c = load_config(Path("configs/archive/fanetmini_sweep_C.yaml"))
     assert cfg_c.model.name == "fanetmini"
     assert cfg_c.data.batch_size == 16
     assert cfg_c.data.num_workers == 8
@@ -579,7 +579,7 @@ def test_fanetmini_sweep_configs_load() -> None:
     assert cfg_c.train.loss.ce_weight == 0.5
     assert cfg_c.train.loss.dice_weight == 0.5
 
-    cfg_d = load_config(Path("configs/fanetmini_sweep_D.yaml"))
+    cfg_d = load_config(Path("configs/archive/fanetmini_sweep_D.yaml"))
     assert cfg_d.model.name == "fanetmini"
     assert cfg_d.data.num_workers == 8  # inherited from C via single-hop extends
     assert cfg_d.optim.optimizer == "adamw"

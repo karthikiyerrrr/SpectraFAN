@@ -5,6 +5,7 @@ model:
   channels: [64, 128, 256, 512]
   bottleneck: 1024                # standard U-Net bottleneck (depth-4 encoder + 1 bottleneck stage)
   fam_conv_kind: depthwise        # one of: depthwise | depthwise_separable; locked by params calibration vs Liu et al. 2026 Table 1
+  skip_transform: fam_complex   # registered skip-transform variant applied on each U-Net skip
 
 data:
   dataset: temimagenet

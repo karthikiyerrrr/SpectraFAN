@@ -1,7 +1,7 @@
 # FANetMini sweep config C (OFAT step 2: switch optimizer family to AdamW + cosine + warmup).
 # Tests whether the modern segmentation optimizer bundle breaks the plateau.
 
-extends: fanetmini.yaml
+extends: ../fanetmini.yaml
 
 data:
   batch_size: 16

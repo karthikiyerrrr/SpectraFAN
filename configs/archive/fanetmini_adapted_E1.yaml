@@ -7,7 +7,7 @@
 # silently drops default.yaml's overrides (specifically image_size: 256) in
 # favor of the dataclass defaults (image_size: 512).
 
-extends: default.yaml
+extends: ../default.yaml
 
 model:
   name: fanetmini

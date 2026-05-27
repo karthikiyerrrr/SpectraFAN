@@ -119,3 +119,21 @@ def test_load_profile_config_parses_sweep_entries(tmp_path):
     assert all(isinstance(e, ProfileSweepEntry) for e in cfg.profile.configs)
     assert cfg.profile.configs[0].image_size == 256
     assert cfg.profile.configs[1].batch_size == 2
+
+
+def test_all_active_configs_load():
+    from spectrafan.config import load_config
+
+    cfg_dir = Path(__file__).resolve().parents[1] / "configs"
+    for name in ("default", "fanetmini", "fanetmini_adapted", "smoke", "full_repro"):
+        cfg = load_config(cfg_dir / f"{name}.yaml")
+        assert cfg.model.name in {"fanet", "fanetmini"}
+
+
+def test_profile_config_loads():
+    from spectrafan.config import load_profile_config
+
+    cfg_dir = Path(__file__).resolve().parents[1] / "configs"
+    cfg = load_profile_config(cfg_dir / "profile.yaml")
+    assert cfg.profile.measure_iters == 100
+    assert len(cfg.profile.configs) == 2

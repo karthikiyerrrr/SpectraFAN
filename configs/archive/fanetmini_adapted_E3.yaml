@@ -13,7 +13,7 @@
 #
 # NOTE: extends default.yaml directly (the loader only resolves one level).
 
-extends: default.yaml
+extends: ../default.yaml
 
 model:
   name: fanetmini
