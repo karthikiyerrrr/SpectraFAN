@@ -138,7 +138,7 @@ def _(pl, runs: dict[str, dict]):
         # prefer headline fields, fall back to computing from metrics
         best_val_iou = headline.get("best_val_iou") if "best_val_iou" in headline else float(df["val_iou"][best_idx])
         best_epoch = headline.get("best_epoch") if "best_epoch" in headline else int(df["epoch"][best_idx])
-        test_iou = headline.get("test_iou") or test.get("test_iou")
+        test_iou = headline.get("test_iou") if "test_iou" in headline else test.get("test_iou")
 
         return {
             "run": label,
@@ -293,7 +293,7 @@ def _(mo, run_label, selected_dirs):
 
 
 @app.cell(hide_code=True)
-def _(RUNS_DIR, run_label, runs: dict[str, dict], single_run_picker):
+def _(RUNS_DIR, mo, run_label, runs: dict[str, dict], single_run_picker):
     from plotly.subplots import make_subplots
 
     _single_label = run_label(RUNS_DIR / single_run_picker.value)
@@ -306,7 +306,7 @@ def _(RUNS_DIR, run_label, runs: dict[str, dict], single_run_picker):
         _pairs = [("iou", "train_iou", "val_iou"), ("dice", "train_dice", "val_dice"), ("loss", "train_loss", "val_loss")]
         _pairs = [(t, tr, va) for (t, tr, va) in _pairs if tr in _df.columns and va in _df.columns]
 
-        _fig_tv = make_subplots(rows=len(_pairs), cols=1, subplot_titles=[t for (t, _, _) in _pairs], shared_xaxes=True, vertical_spacing=0.08)
+        _fig_tv = make_subplots(rows=len(_pairs), cols=1, subplot_titles=[p[0] for p in _pairs], shared_xaxes=True, vertical_spacing=0.08)
         for _i, (_title, _tr, _va) in enumerate(_pairs, start=1):
             _fig_tv.add_scatter(x=_epochs, y=_df[_tr].to_list(), mode="lines", name=f"train ({_title})", line=dict(color="#1f77b4"), legendgroup=_title, row=_i, col=1)
             _fig_tv.add_scatter(x=_epochs, y=_df[_va].to_list(), mode="lines", name=f"val ({_title})", line=dict(color="#ff7f0e"), legendgroup=_title, row=_i, col=1)
@@ -314,8 +314,7 @@ def _(RUNS_DIR, run_label, runs: dict[str, dict], single_run_picker):
         _fig_tv.update_xaxes(title_text="epoch", row=len(_pairs), col=1)
         _fig_tv
     else:
-        import marimo as _mo
-        _mo.md(f"_No `metrics.parquet` for `{_single_label}` — train vs val curves unavailable._")
+        mo.md(f"_No `metrics.parquet` for `{_single_label}` — train vs val curves unavailable._")
 
     return
 
