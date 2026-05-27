@@ -164,7 +164,9 @@ def _(mo, np, run_dir, sp):
             horizontal_spacing=0.02,
         )
         for row in range(4):
-            fig.add_heatmap(z=images[row, 0], row=row + 1, col=1, showscale=False, colorscale="gray")
+            fig.add_heatmap(
+                z=images[row, 0], row=row + 1, col=1, showscale=False, colorscale="gray"
+            )
             fig.add_heatmap(z=masks[row, 0], row=row + 1, col=2, showscale=False, colorscale="gray")
             fig.add_heatmap(z=preds[row, 0], row=row + 1, col=3, showscale=False, colorscale="gray")
         fig.update_layout(height=1100, title=title, showlegend=False)

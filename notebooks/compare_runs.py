@@ -35,12 +35,10 @@ def _():
     BASELINE_NAME = "2026-05-23_235101_fanetmini"
     DECISION_DELTA = 0.005  # spec rule: keep if best val_iou >= baseline + 0.005
 
-
     def run_label(run_dir: Path) -> str:
         """Short label for plots. Strips the `YYYY-MM-DD_HHMMSS_` prefix when present."""
         parts = run_dir.name.split("_", 2)
         return parts[2] if len(parts) == 3 else run_dir.name
-
 
     def discover_runs(runs_dir: Path = RUNS_DIR) -> list[Path]:
         """All run dirs with a run.json (or, failing that, a metrics.parquet), sorted by name."""
@@ -49,7 +47,6 @@ def _():
         with_manifest = {p.parent for p in runs_dir.glob("*/run.json")}
         with_metrics = {p.parent for p in runs_dir.glob("*/metrics.parquet")}
         return sorted(with_manifest | with_metrics)
-
 
     run_dirs = discover_runs()
     {p.name: run_label(p) for p in run_dirs}
@@ -71,8 +68,7 @@ def _():
 @app.cell(hide_code=True)
 def _(BASELINE_NAME, mo, run_dirs, run_label):
     _default_pick_dirs = [
-        p for p in run_dirs
-        if p.name == BASELINE_NAME or "_fanetmini_adapted_E" in p.name
+        p for p in run_dirs if p.name == BASELINE_NAME or "_fanetmini_adapted_E" in p.name
     ]
     run_picker = mo.ui.multiselect(
         options={run_label(p): p.name for p in run_dirs},
@@ -88,11 +84,9 @@ def _(BASELINE_NAME, mo, run_dirs, run_label):
 def _(Path, RUNS_DIR, json, load_manifest, pl, run_label, run_picker):
     selected_dirs = [RUNS_DIR / name for name in run_picker.value]
 
-
     def _load_test_metrics(run_dir: Path) -> dict | None:
         f = run_dir / "test_metrics.json"
         return json.loads(f.read_text()) if f.is_file() else None
-
 
     runs: dict[str, dict] = {}
     for d in selected_dirs:
@@ -100,7 +94,9 @@ def _(Path, RUNS_DIR, json, load_manifest, pl, run_label, run_picker):
         runs[label] = {
             "dir": d,
             "manifest": load_manifest(d),
-            "metrics": pl.read_parquet(d / "metrics.parquet") if (d / "metrics.parquet").is_file() else None,
+            "metrics": pl.read_parquet(d / "metrics.parquet")
+            if (d / "metrics.parquet").is_file()
+            else None,
             "test": _load_test_metrics(d),
         }
 
@@ -136,8 +132,14 @@ def _(pl, runs: dict[str, dict]):
         best_idx = df["val_iou"].arg_max()
 
         # prefer headline fields, fall back to computing from metrics
-        best_val_iou = headline.get("best_val_iou") if "best_val_iou" in headline else float(df["val_iou"][best_idx])
-        best_epoch = headline.get("best_epoch") if "best_epoch" in headline else int(df["epoch"][best_idx])
+        best_val_iou = (
+            headline.get("best_val_iou")
+            if "best_val_iou" in headline
+            else float(df["val_iou"][best_idx])
+        )
+        best_epoch = (
+            headline.get("best_epoch") if "best_epoch" in headline else int(df["epoch"][best_idx])
+        )
         test_iou = headline.get("test_iou") if "test_iou" in headline else test.get("test_iou")
 
         return {
@@ -153,7 +155,6 @@ def _(pl, runs: dict[str, dict]):
             "mean_wall_sec": float(df["wall_sec"].mean()) if "wall_sec" in df.columns else None,
             "test_iou": test_iou,
         }
-
 
     summary_df = pl.DataFrame([_summarize(label, info) for label, info in runs.items()])
     summary_df
@@ -200,11 +201,18 @@ def _(runs: dict[str, dict]):
     import plotly.graph_objects as go
 
     _COLOR_CYCLE = [
-        "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
-        "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+        "#1f77b4",
+        "#ff7f0e",
+        "#2ca02c",
+        "#d62728",
+        "#9467bd",
+        "#8c564b",
+        "#e377c2",
+        "#7f7f7f",
+        "#bcbd22",
+        "#17becf",
     ]
     run_colors = {label: _COLOR_CYCLE[i % len(_COLOR_CYCLE)] for i, label in enumerate(runs)}
-
 
     def overlay(metric: str, *, title: str, yaxis: str, log_y: bool = False) -> go.Figure:
         """Overlay a single metric across all selected runs, with consistent colors."""
@@ -223,13 +231,16 @@ def _(runs: dict[str, dict]):
                 line=dict(color=run_colors[label]),
             )
         fig.update_layout(
-            title=title, xaxis_title="epoch", yaxis_title=yaxis,
-            template="plotly_white", height=380, hovermode="x unified",
+            title=title,
+            xaxis_title="epoch",
+            yaxis_title=yaxis,
+            template="plotly_white",
+            height=380,
+            hovermode="x unified",
         )
         if log_y:
             fig.update_yaxes(type="log")
         return fig
-
 
     return (overlay,)
 
@@ -239,12 +250,18 @@ def _(baseline_best, overlay, threshold_value):
     _fig_val = overlay("val_iou", title="val_iou", yaxis="val_iou")
     if threshold_value is not None:
         _fig_val.add_hline(
-            y=threshold_value, line_dash="dash", line_color="#444",
-            annotation_text=f"threshold {threshold_value:.4f}", annotation_position="top right",
+            y=threshold_value,
+            line_dash="dash",
+            line_color="#444",
+            annotation_text=f"threshold {threshold_value:.4f}",
+            annotation_position="top right",
         )
         _fig_val.add_hline(
-            y=baseline_best, line_dash="dot", line_color="#888",
-            annotation_text=f"baseline {baseline_best:.4f}", annotation_position="bottom right",
+            y=baseline_best,
+            line_dash="dot",
+            line_color="#888",
+            annotation_text=f"baseline {baseline_best:.4f}",
+            annotation_position="bottom right",
         )
     _fig_val
 
@@ -303,14 +320,47 @@ def _(RUNS_DIR, mo, run_label, runs: dict[str, dict], single_run_picker):
         _df = _single_info["metrics"]
         _epochs = _df["epoch"].to_list()
 
-        _pairs = [("iou", "train_iou", "val_iou"), ("dice", "train_dice", "val_dice"), ("loss", "train_loss", "val_loss")]
+        _pairs = [
+            ("iou", "train_iou", "val_iou"),
+            ("dice", "train_dice", "val_dice"),
+            ("loss", "train_loss", "val_loss"),
+        ]
         _pairs = [(t, tr, va) for (t, tr, va) in _pairs if tr in _df.columns and va in _df.columns]
 
-        _fig_tv = make_subplots(rows=len(_pairs), cols=1, subplot_titles=[p[0] for p in _pairs], shared_xaxes=True, vertical_spacing=0.08)
+        _fig_tv = make_subplots(
+            rows=len(_pairs),
+            cols=1,
+            subplot_titles=[p[0] for p in _pairs],
+            shared_xaxes=True,
+            vertical_spacing=0.08,
+        )
         for _i, (_title, _tr, _va) in enumerate(_pairs, start=1):
-            _fig_tv.add_scatter(x=_epochs, y=_df[_tr].to_list(), mode="lines", name=f"train ({_title})", line=dict(color="#1f77b4"), legendgroup=_title, row=_i, col=1)
-            _fig_tv.add_scatter(x=_epochs, y=_df[_va].to_list(), mode="lines", name=f"val ({_title})", line=dict(color="#ff7f0e"), legendgroup=_title, row=_i, col=1)
-        _fig_tv.update_layout(title=f"train vs val — {_single_label}", template="plotly_white", height=260 * len(_pairs), hovermode="x unified")
+            _fig_tv.add_scatter(
+                x=_epochs,
+                y=_df[_tr].to_list(),
+                mode="lines",
+                name=f"train ({_title})",
+                line=dict(color="#1f77b4"),
+                legendgroup=_title,
+                row=_i,
+                col=1,
+            )
+            _fig_tv.add_scatter(
+                x=_epochs,
+                y=_df[_va].to_list(),
+                mode="lines",
+                name=f"val ({_title})",
+                line=dict(color="#ff7f0e"),
+                legendgroup=_title,
+                row=_i,
+                col=1,
+            )
+        _fig_tv.update_layout(
+            title=f"train vs val — {_single_label}",
+            template="plotly_white",
+            height=260 * len(_pairs),
+            hovermode="x unified",
+        )
         _fig_tv.update_xaxes(title_text="epoch", row=len(_pairs), col=1)
         _fig_tv
     else:

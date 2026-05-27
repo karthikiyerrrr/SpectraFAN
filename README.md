@@ -53,10 +53,10 @@ Pull the TEMImageNet / AtomSegNet dataset:
 uv run python data/download.py
 ```
 
-Open the first notebook:
+Explore a run (once one exists under `runs/`):
 
 ```bash
-uv run marimo edit notebooks/01_data.py
+uv run marimo edit notebooks/explore_run.py
 ```
 
 ## Project layout

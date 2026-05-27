@@ -1,34 +1,34 @@
 # Notebooks
 
-Exploratory work for SpectraFAN. All version-controlled notebooks are
-[marimo](https://marimo.io/) `.py` files — reactive, plain-text diffable.
-Colab launcher notebooks (`colab_*.ipynb`) are gitignored because they hold
-per-user Drive paths and auth state; the canonical cell content lives in
-`03b_full_repro.py` and `04_profile_fam.py` under their "How to reproduce a
-run" accordions.
+Live notebooks for SpectraFAN. Two [marimo](https://marimo.io/) viewers explore runs that
+sync back from Colab/Drive, and one committed Colab launcher produces those runs.
 
-Edit via marimo-pair:
+## Marimo viewers (artifact readers — no torch, no dataset)
+
+| Notebook | Purpose |
+| --- | --- |
+| `explore_run.py` | Inspect one run: training curves, held-out test, FAM diagnosis, profiling — whichever the run's `run.json` says it produced. |
+| `compare_runs.py` | Overlay curves and a side-by-side summary across multiple runs. |
+
+Both read `run.json` (see `spectrafan.manifest`) and degrade gracefully for older runs that
+predate manifests. Point them at a Drive-synced runs directory:
 
 ```bash
-uv run marimo edit notebooks/<file>.py
+export SPECTRAFAN_RUNS_DIR="/path/to/your/Drive/.../SpectraFAN/runs"
+uv run marimo edit notebooks/explore_run.py
 ```
 
-Conventions:
+Conventions: **polars** for tables, **plotly** for figures, and hide cells that only build
+UI/plot objects — surface the rendered result.
 
-- Use **polars** for tabular data and run logs (not pandas).
-- Use **plotly** for visualization.
-- Hide cells that only instantiate UI elements or generate plot objects; surface
-  the rendered result.
+## Colab launcher
 
-Current notebooks (reproduction phase):
+`colab_spectrafan.ipynb` (committed boilerplate) mounts Drive, clones, syncs the pinned env,
+downloads the dataset, symlinks `runs/` to Drive, then offers labeled task cells: **Train**,
+**Predict (emit artifacts)**, **Profile**. Copy it to a personal `colab_*.ipynb` (gitignored)
+and set `DRIVE_ROOT` in cell 3 to your Drive layout. Training emits a run dir under
+`$DRIVE_ROOT/runs/`; run **Predict** after **Train** so the viewers have prediction artifacts.
 
-| # | Notebook | Purpose |
-| --- | --- | --- |
-| 01 | `01_data.py` | TEMImageNet inventory, paired image/mask viewer, log-magnitude FFT view |
-| 02 | `02_model.py` | FANet (FAMComplex + U-Net) build, calibrated to Table 1 |
-| 03a | `03a_repro_baseline.py` | Smoke / baseline training-run inspector: curves + 4-sample prediction grid |
-| 03b | `03b_full_repro.py` | Full-reproduction inspector for Colab-produced runs, plus held-out test-set evaluation. Contains the Colab launcher recipe under an accordion. |
-| 04 | `04_profile_fam.py` | Per-op timing inspector for `spectrafan.profile` runs. Contains the Colab launcher recipe under an accordion. |
+## Archive
 
-Further notebooks will be added once the reproduction is locked and the
-research direction is chosen.
+`archive/` holds the reproduction-phase notebooks (`01`–`07`), kept for history.
