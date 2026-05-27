@@ -12,6 +12,7 @@ from collections.abc import Sequence
 import torch
 from torch import nn
 
+from spectrafan.models._registries import SKIP_TRANSFORM_REGISTRY
 from spectrafan.models.blocks import (
     DecoderModule,
     DoubleConv,
@@ -19,11 +20,11 @@ from spectrafan.models.blocks import (
     OutputConv,
     OutputNorm,
 )
-from spectrafan.models.fam import ConvKind, FAMComplex
+from spectrafan.models.fam import ConvKind
 
 
 class FANet(nn.Module):
-    """U-Net backbone with FAMComplex on every skip connection.
+    """U-Net backbone with a configurable skip-connection transform on every skip.
 
     Args:
         in_channels: input image channels (3 for RGB-formatted inputs).
@@ -32,7 +33,11 @@ class FANet(nn.Module):
             channels[-1] by U-Net convention, or channels[-1] if the
             paper's "four scales" wording is meant literally).
         conv_kind: passed through to every FAM instance.
+        skip_transform: registry key naming the skip-transform variant built
+            on each skip (default "fam_complex").
         out_channels: segmentation mask channels (1 for binary).
+        output_norm: normalization applied in the OutputConv head
+            ("bn" | "none" | "groupnorm").
     """
 
     def __init__(
@@ -41,6 +46,7 @@ class FANet(nn.Module):
         channels: Sequence[int] = (64, 128, 256, 512),
         bottleneck: int = 1024,
         conv_kind: ConvKind = "depthwise",
+        skip_transform: str = "fam_complex",
         out_channels: int = 1,
         output_norm: OutputNorm = "bn",
     ) -> None:
@@ -59,7 +65,12 @@ class FANet(nn.Module):
         self.bottleneck_module = EncoderModule(self.channels[-1], bottleneck)
 
         # One FAM per skip (one per encoder scale, including the stem).
-        self.fams = nn.ModuleList([FAMComplex(c, conv_kind=conv_kind) for c in self.channels])
+        self.fams = nn.ModuleList(
+            [
+                SKIP_TRANSFORM_REGISTRY.build(skip_transform, channels=c, conv_kind=conv_kind)
+                for c in self.channels
+            ]
+        )
 
         # Decoder up-stages, mirrored against encoder widths.
         # In channels of each decoder = output of previous stage (starts at bottleneck).
@@ -101,6 +112,7 @@ class FANetMini(FANet):
         self,
         in_channels: int = 3,
         conv_kind: ConvKind = "depthwise",
+        skip_transform: str = "fam_complex",
         out_channels: int = 1,
         output_norm: OutputNorm = "bn",
     ) -> None:
@@ -109,6 +121,34 @@ class FANetMini(FANet):
             channels=(32, 64, 128),
             bottleneck=256,
             conv_kind=conv_kind,
+            skip_transform=skip_transform,
             out_channels=out_channels,
             output_norm=output_norm,
         )
+
+
+# Architecture registration (kept at end to avoid an import cycle via the package __init__).
+from spectrafan.config import DataConfig, ModelConfig  # noqa: E402
+from spectrafan.models._registries import MODEL_REGISTRY  # noqa: E402
+
+
+@MODEL_REGISTRY.register("fanet")
+def _build_fanet(model_cfg: ModelConfig, data_cfg: DataConfig) -> nn.Module:
+    return FANet(
+        in_channels=data_cfg.in_channels,
+        channels=tuple(model_cfg.channels),
+        bottleneck=model_cfg.bottleneck,
+        conv_kind=model_cfg.fam_conv_kind,
+        skip_transform=model_cfg.skip_transform,
+        output_norm=model_cfg.output_norm,
+    )
+
+
+@MODEL_REGISTRY.register("fanetmini")
+def _build_fanetmini(model_cfg: ModelConfig, data_cfg: DataConfig) -> nn.Module:
+    return FANetMini(
+        in_channels=data_cfg.in_channels,
+        conv_kind=model_cfg.fam_conv_kind,
+        skip_transform=model_cfg.skip_transform,
+        output_norm=model_cfg.output_norm,
+    )

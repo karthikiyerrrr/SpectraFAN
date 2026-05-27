@@ -79,3 +79,11 @@ class FAMComplex(nn.Module):
             spatial_hat = torch.fft.ifft2(freq_hat).real
             out = self.final(x_fp32 + spatial_hat)
         return out.to(orig_dtype)
+
+
+from spectrafan.models._registries import SKIP_TRANSFORM_REGISTRY  # noqa: E402
+
+
+@SKIP_TRANSFORM_REGISTRY.register("fam_complex")
+def _build_fam_complex(channels: int, conv_kind: ConvKind = "depthwise") -> nn.Module:
+    return FAMComplex(channels, conv_kind=conv_kind)
