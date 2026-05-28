@@ -1,0 +1,7 @@
+# FAMSegNet: AtomSegNet U-Net with a FAM on each skip, E5 recipe.
+# FAM presence is determined by model.name: "famsegnet" => fam_complex skips.
+
+extends: adapted_recipe.yaml
+
+model:
+  name: famsegnet

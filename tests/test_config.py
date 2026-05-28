@@ -125,9 +125,32 @@ def test_all_active_configs_load():
     from spectrafan.config import load_config
 
     cfg_dir = Path(__file__).resolve().parents[1] / "configs"
-    for name in ("default", "fanetmini", "fanetmini_adapted", "smoke", "full_repro"):
+    expected = {
+        "default": "fanet",
+        "fanetmini": "fanetmini",
+        "fanetmini_adapted": "fanetmini",
+        "smoke": "fanet",
+        "full_repro": "fanet",
+        "atomsegnet": "atomsegnet",
+        "famsegnet": "famsegnet",
+    }
+    for name, model_name in expected.items():
         cfg = load_config(cfg_dir / f"{name}.yaml")
-        assert cfg.model.name in {"fanet", "fanetmini"}
+        assert cfg.model.name == model_name
+
+
+def test_atomsegnet_and_famsegnet_inherit_e5_recipe():
+    from spectrafan.config import load_config
+
+    cfg_dir = Path(__file__).resolve().parents[1] / "configs"
+    for name in ("atomsegnet", "famsegnet"):
+        cfg = load_config(cfg_dir / f"{name}.yaml")
+        assert cfg.data.image_size == 256
+        assert cfg.data.in_channels == 3
+        assert cfg.data.batch_size == 16
+        assert cfg.optim.optimizer == "adamw"
+        assert cfg.optim.schedule == "cosine"
+        assert cfg.train.epochs == 200
 
 
 def test_profile_config_loads():

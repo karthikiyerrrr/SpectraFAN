@@ -1,0 +1,7 @@
+# Faithful AtomSegNet U-Net (no FAM) on TEMImageNet, E5 recipe.
+# FAM presence is determined by model.name: "atomsegnet" => identity skips.
+
+extends: adapted_recipe.yaml
+
+model:
+  name: atomsegnet
