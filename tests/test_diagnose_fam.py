@@ -21,6 +21,21 @@ def test_module_imports() -> None:
     assert hasattr(diagnose_fam, "diagnose_run")
 
 
+def test_p99_to_median_handles_oversized_tensor() -> None:
+    """Regression: full-size batch-16 diagnose flattens > 2**24 magnitudes, which
+    torch.quantile rejects outright. The helper must subsample and still return a
+    finite, positive ratio."""
+    import math
+
+    from spectrafan.analysis.diagnose_fam import _p99_to_median
+
+    big = torch.rand(2**24 + 1)
+    with pytest.raises(RuntimeError):
+        torch.quantile(big, 0.99)  # the exact limit we are guarding against
+    ratio = _p99_to_median(big)
+    assert math.isfinite(ratio) and ratio > 0
+
+
 def test_patched_forward_skip_fft_preserves_shape_and_dtype() -> None:
     """fam_skip_fft drops the FFT pathway but keeps the learned 1x1 projection."""
     from spectrafan.analysis.diagnose_fam import _patched_forward_skip_fft

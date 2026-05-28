@@ -180,6 +180,23 @@ def _dead_rate(t: torch.Tensor) -> float:
     return float((t.detach() == 0).float().mean().item())
 
 
+def _p99_to_median(t: torch.Tensor, cap: int = 1 << 23) -> float:
+    """Ratio of the 99th percentile to the median of ``t``'s flattened values.
+
+    torch.quantile rejects tensors with more than 2**24 elements, which a
+    full-resolution FAM at batch 16 exceeds; above ``cap`` a fixed-seed random
+    subsample gives a statistically equivalent ratio for this diagnostic.
+    """
+    flat = t.flatten()
+    if flat.numel() > cap:
+        gen = torch.Generator(device=flat.device).manual_seed(0)
+        idx = torch.randint(flat.numel(), (cap,), generator=gen, device=flat.device)
+        flat = flat[idx]
+    p99 = torch.quantile(flat, 0.99).item()
+    median = flat.median().item()
+    return p99 / max(median, 1e-12)
+
+
 def _make_instrumented_forward(
     collector: _FamStatsCollector, scale_idx: int
 ) -> Callable[[FAMComplex, torch.Tensor], torch.Tensor]:
@@ -202,10 +219,7 @@ def _make_instrumented_forward(
             dc_energy = freq_real_abs[..., 0, 0].pow(2).sum().item()
             total_energy = freq_real_abs.pow(2).sum().item()
             fft_real_dc_share = dc_energy / max(total_energy, 1e-12)
-            flat = freq_real_abs.flatten()
-            p99 = torch.quantile(flat, 0.99).item()
-            median = flat.median().item()
-            fft_real_p99_to_median = p99 / max(median, 1e-12)
+            fft_real_p99_to_median = _p99_to_median(freq_real_abs)
 
             # Real and imag branches — capture each branch's output norm.
             # Dead-rate uses the post-ReLU tensor; recover it by stepping
