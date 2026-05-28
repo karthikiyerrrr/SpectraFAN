@@ -8,6 +8,9 @@ from spectrafan.config import DataConfig, ModelConfig
 from spectrafan.models import (
     fam as _fam,  # noqa: F401  (belt-and-suspenders: unet imports fam, but state the dependency)
 )
+from spectrafan.models import (
+    skip_transforms as _skip_transforms,  # noqa: F401  (imports register "identity")
+)
 from spectrafan.models import unet as _unet  # noqa: F401  (imports register architectures)
 from spectrafan.models._registries import MODEL_REGISTRY, SKIP_TRANSFORM_REGISTRY
 from spectrafan.models.fam import FAMComplex

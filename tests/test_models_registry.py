@@ -40,3 +40,10 @@ def test_fanetmini_forward_shape():
     m = FANetMini(in_channels=1)
     out = m(torch.randn(1, 1, 64, 64))
     assert out.shape == (1, 1, 64, 64)
+
+
+def test_identity_skip_transform_registered_and_passthrough():
+    assert "identity" in SKIP_TRANSFORM_REGISTRY.keys()
+    t = SKIP_TRANSFORM_REGISTRY.build("identity", channels=64, conv_kind="depthwise")
+    x = torch.randn(2, 64, 16, 16)
+    assert torch.equal(t(x), x)
