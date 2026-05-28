@@ -102,10 +102,11 @@ class FANet(nn.Module):
 class FANetMini(FANet):
     """FANet sized for TEMImageNet (256x256 binary atom masks).
 
-    Encoder widths (32, 64, 128) with a 256-channel bottleneck, mirroring
-    AtomSegNet's depth/width on the same dataset. Three FAMs on the skips;
-    FAM block, encoder/decoder blocks, and output head are inherited from
-    FANet without modification.
+    Encoder widths (32, 64, 128) with a 256-channel bottleneck: a three-scale
+    encoder that reaches the same 32x32 bottleneck resolution as FANet does at
+    512x512, one downsample shallower to suit the 256x256 input. Three FAMs on
+    the skips; FAM block, encoder/decoder blocks, and output head are inherited
+    from FANet without modification.
     """
 
     def __init__(
