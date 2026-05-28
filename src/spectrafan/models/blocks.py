@@ -59,6 +59,27 @@ class DecoderModule(nn.Module):
         return self.conv(x)
 
 
+class BilinearUp(nn.Module):
+    """Bilinear upsample 2x -> 1x1 conv -> concat skip -> DoubleConv.
+
+    The faithful AtomSegNet decoder path (UpsamplingBilinear2d + a 1x1 "upconv"),
+    in contrast to DecoderModule's ConvTranspose2d. The 1x1 conv halves channels
+    to out_channels; the skip (same out_channels) is concatenated, so DoubleConv
+    sees out_channels * 2 inputs.
+    """
+
+    def __init__(self, in_channels: int, out_channels: int) -> None:
+        super().__init__()
+        self.up = nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+        self.reduce = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
+        self.conv = DoubleConv(out_channels * 2, out_channels)
+
+    def forward(self, x: torch.Tensor, skip: torch.Tensor) -> torch.Tensor:
+        x = self.reduce(self.up(x))
+        x = torch.cat([x, skip], dim=1)
+        return self.conv(x)
+
+
 class OutputConv(nn.Module):
     """Conv 1x1 -> BN. Returns logits; callers apply sigmoid externally for probabilities.
 
