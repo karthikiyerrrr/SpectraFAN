@@ -5,3 +5,9 @@ extends: adapted_recipe.yaml
 
 model:
   name: famsegnet
+
+train:
+  # Same rationale as atomsegnet.yaml: AtomSegNet's high-res convs are slow under the
+  # recipe's deterministic kernels, so enable cudnn.benchmark autotuning. Both sweep
+  # arms flip together, keeping the FAM ablation clean; only bitwise repro is traded.
+  deterministic: false

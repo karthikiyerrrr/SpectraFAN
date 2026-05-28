@@ -5,3 +5,11 @@ extends: adapted_recipe.yaml
 
 model:
   name: atomsegnet
+
+train:
+  # AtomSegNet runs wide convs at 256x256 / 128x128 (it only downsamples twice),
+  # where the recipe's deterministic kernels (cudnn.benchmark off) are slow. Enabling
+  # benchmark autotuning here cuts per-epoch wall substantially; seeds are still set,
+  # only bitwise reproducibility is traded. The E5 fanetmini reference is left
+  # deterministic, so this is scoped to the sweep configs only.
+  deterministic: false
