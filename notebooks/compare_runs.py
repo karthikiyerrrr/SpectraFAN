@@ -17,7 +17,6 @@ def _():
         `metrics.parquet`).
         """
     )
-
     return (mo,)
 
 
@@ -50,13 +49,11 @@ def _():
 
     run_dirs = discover_runs()
     {p.name: run_label(p) for p in run_dirs}
-
     return (
         BASELINE_NAME,
         DECISION_DELTA,
         Path,
         RUNS_DIR,
-        discover_runs,
         json,
         load_manifest,
         pl,
@@ -76,7 +73,6 @@ def _(BASELINE_NAME, mo, run_dirs, run_label):
         label="Runs to compare",
     )
     run_picker
-
     return (run_picker,)
 
 
@@ -101,8 +97,7 @@ def _(Path, RUNS_DIR, json, load_manifest, pl, run_label, run_picker):
         }
 
     list(runs)
-
-    return runs, selected_dirs
+    return (runs,)
 
 
 @app.cell(hide_code=True)
@@ -160,7 +155,6 @@ def _(pl, runs: dict[str, dict]):
 
     summary_df = pl.DataFrame([_summarize(label, info) for label, info in runs.items()])
     summary_df
-
     return
 
 
@@ -194,7 +188,6 @@ def _(
         threshold_md = mo.md(f"_Baseline `{BASELINE_NAME}` not selected — threshold line hidden._")
 
     threshold_md
-
     return baseline_best, threshold_value
 
 
@@ -266,108 +259,24 @@ def _(baseline_best, overlay, threshold_value):
             annotation_position="bottom right",
         )
     _fig_val
-
     return
 
 
 @app.cell(hide_code=True)
 def _(overlay):
     overlay("train_iou", title="train_iou", yaxis="train_iou")
-
     return
 
 
 @app.cell(hide_code=True)
 def _(overlay):
     overlay("train_loss", title="train_loss", yaxis="train_loss")
-
     return
 
 
 @app.cell(hide_code=True)
 def _(overlay):
     overlay("lr", title="lr schedule", yaxis="lr", log_y=True)
-
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md("""
-    ## Train vs val curves — single run
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo, run_label, selected_dirs):
-    single_run_picker = mo.ui.dropdown(
-        options={run_label(d): d.name for d in selected_dirs},
-        value=run_label(selected_dirs[-1]) if selected_dirs else None,
-        label="Run",
-    )
-    single_run_picker
-
-    return (single_run_picker,)
-
-
-@app.cell(hide_code=True)
-def _(RUNS_DIR, mo, run_label, runs: dict[str, dict], single_run_picker):
-    from plotly.subplots import make_subplots
-
-    _single_label = run_label(RUNS_DIR / single_run_picker.value)
-    _single_info = runs[_single_label]
-
-    if _single_info["metrics"] is not None:
-        _df = _single_info["metrics"]
-        _epochs = _df["epoch"].to_list()
-
-        _pairs = [
-            ("iou", "train_iou", "val_iou"),
-            ("dice", "train_dice", "val_dice"),
-            ("loss", "train_loss", "val_loss"),
-        ]
-        _pairs = [(t, tr, va) for (t, tr, va) in _pairs if tr in _df.columns and va in _df.columns]
-
-        _fig_tv = make_subplots(
-            rows=len(_pairs),
-            cols=1,
-            subplot_titles=[p[0] for p in _pairs],
-            shared_xaxes=True,
-            vertical_spacing=0.08,
-        )
-        for _i, (_title, _tr, _va) in enumerate(_pairs, start=1):
-            _fig_tv.add_scatter(
-                x=_epochs,
-                y=_df[_tr].to_list(),
-                mode="lines",
-                name=f"train ({_title})",
-                line=dict(color="#1f77b4"),
-                legendgroup=_title,
-                row=_i,
-                col=1,
-            )
-            _fig_tv.add_scatter(
-                x=_epochs,
-                y=_df[_va].to_list(),
-                mode="lines",
-                name=f"val ({_title})",
-                line=dict(color="#ff7f0e"),
-                legendgroup=_title,
-                row=_i,
-                col=1,
-            )
-        _fig_tv.update_layout(
-            title=f"train vs val — {_single_label}",
-            template="plotly_white",
-            height=260 * len(_pairs),
-            hovermode="x unified",
-        )
-        _fig_tv.update_xaxes(title_text="epoch", row=len(_pairs), col=1)
-        _fig_tv
-    else:
-        mo.md(f"_No `metrics.parquet` for `{_single_label}` — train vs val curves unavailable._")
-
     return
 
 
