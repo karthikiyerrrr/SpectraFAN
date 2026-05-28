@@ -4,7 +4,7 @@ __generated_with = "0.23.6"
 app = marimo.App(width="medium")
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _():
     import marimo as mo
 
@@ -49,9 +49,13 @@ def _(RUNS_DIR, mo):
         )
     else:
         run_dirs = []
+    # default to the newest run that isn't a throwaway smoke run (they stay selectable)
+    _default = next((p for p in run_dirs if not p.name.endswith("_smoke")), None) or (
+        run_dirs[0] if run_dirs else None
+    )
     run_picker = mo.ui.dropdown(
         options={p.name: p for p in run_dirs},
-        value=run_dirs[0].name if run_dirs else None,
+        value=_default.name if _default else None,
         label="Run dir",
     )
     run_picker if run_dirs else mo.md(f"**No runs found under `{RUNS_DIR}`.**")
@@ -69,7 +73,7 @@ def _(load_manifest, mo, run_dirs, run_picker):
         f"&nbsp;|&nbsp; dataset: `{manifest['dataset'] or '—'}` "
         f"&nbsp;|&nbsp; stages: {', '.join(f'`{s}`' for s in stages) or '—'}"
     )
-    return manifest, run_dir, stages
+    return run_dir, stages
 
 
 @app.cell(hide_code=True)
@@ -101,10 +105,12 @@ def _(go, mo, pl, run_dir, stages):
 
     def _curve(cols, title, yrange=None, log_y=False):
         e = metrics_df["epoch"].to_list()
+        # a single/near-single epoch can't draw a line; show markers so it's still visible
+        mode = "lines+markers" if len(e) < 3 else "lines"
         fig = go.Figure()
         for name in cols:
             if name in metrics_df.columns:
-                fig.add_scatter(x=e, y=metrics_df[name].to_list(), mode="lines", name=name)
+                fig.add_scatter(x=e, y=metrics_df[name].to_list(), mode=mode, name=name)
         fig.update_layout(title=title, xaxis_title="epoch", template="plotly_white", height=320)
         if yrange:
             fig.update_yaxes(range=yrange)
@@ -191,29 +197,33 @@ def _(mo, stages):
 
 @app.cell(hide_code=True)
 def _(json, mo, run_dir):
-    mo.stop(not (run_dir / "fam_diagnosis.json").is_file())
-    blob = json.loads((run_dir / "fam_diagnosis.json").read_text())
-    _iou = blob["val_iou"]
-    mo.md(
-        f"""
-        ### Counterfactual val_iou
+    _fam_diagnosis = run_dir / "fam_diagnosis.json"
+    blob = json.loads(_fam_diagnosis.read_text()) if _fam_diagnosis.is_file() else None
+    if blob is not None:
+        _iou = blob["val_iou"]
+        _diag_md = mo.md(
+            f"""
+            ### Counterfactual val_iou
 
-        Checkpoint: `best.pt` (epoch {blob["epoch"]}, {blob["n_fam_modules"]} FAMs, {blob["n_val_batches"]} val batches).
+            Checkpoint: `best.pt` (epoch {blob["epoch"]}, {blob["n_fam_modules"]} FAMs, {blob["n_val_batches"]} val batches).
 
-        | mode | val_iou | delta vs as_trained |
-        | --- | ---: | ---: |
-        | `as_trained` | **{_iou["as_trained"]:.4f}** | — |
-        | `fam_skip_fft` | {_iou["fam_skip_fft"]:.4f} | {_iou["fam_skip_fft"] - _iou["as_trained"]:+.4f} |
-        | `fam_zero` | {_iou["fam_zero"]:.4f} | {_iou["fam_zero"] - _iou["as_trained"]:+.4f} |
-        """
-    )
+            | mode | val_iou | delta vs as_trained |
+            | --- | ---: | ---: |
+            | `as_trained` | **{_iou["as_trained"]:.4f}** | — |
+            | `fam_skip_fft` | {_iou["fam_skip_fft"]:.4f} | {_iou["fam_skip_fft"] - _iou["as_trained"]:+.4f} |
+            | `fam_zero` | {_iou["fam_zero"]:.4f} | {_iou["fam_zero"] - _iou["as_trained"]:+.4f} |
+            """
+        )
+    else:
+        _diag_md = None
+    _diag_md
     return (blob,)
 
 
 @app.cell(hide_code=True)
-def _(mo, pl, run_dir):
-    mo.stop(not (run_dir / "fam_stats.parquet").is_file())
-    stats_df = pl.read_parquet(run_dir / "fam_stats.parquet")
+def _(pl, run_dir):
+    _fam_stats = run_dir / "fam_stats.parquet"
+    stats_df = pl.read_parquet(_fam_stats) if _fam_stats.is_file() else None
     stats_df
     return (stats_df,)
 
@@ -322,13 +332,13 @@ def _(blob, mo, pl, run_dir, stats_df):
         _verdict = (
             "**Entire FAM block is dead.** `fam_zero` matches `as_trained` within "
             f"{_delta_zero:+.4f}. The 1x1 final conv is also wasted. Next step: "
-            "FAM redesign (see decision table in the spec)."
+            "FAM redesign."
         )
     elif abs(_delta_skip) < 0.005:
         _verdict = (
             "**FFT pathway is dead.** `fam_skip_fft` matches `as_trained` within "
             f"{_delta_skip:+.4f} — the 1x1 projection is doing all the work. "
-            "Next step: FAM redesign (see decision table in the spec)."
+            "Next step: FAM redesign."
         )
     elif _delta_skip > 0:
         _verdict = (
@@ -339,14 +349,16 @@ def _(blob, mo, pl, run_dir, stats_df):
         _verdict = (
             f"**FAM is healthy.** Both ablations hurt by > 0.05 and contribution "
             f"ratio at all scales > 0.1 (min={_min_ratio:.3f}, max={_max_ratio:.3f}). "
-            "The ceiling is recipe-bound. Next step: resume the frozen B/C/D sweep."
+            "The ceiling is recipe-bound, not FAM-bound — next step is on the training "
+            "recipe (LR / schedule / augmentation), not the FAM."
         )
     else:
         _verdict = (
             f"**Ambiguous.** delta_skip={_delta_skip:+.4f}, delta_zero={_delta_zero:+.4f}, "
             f"contribution ratio min={_min_ratio:.3f} max={_max_ratio:.3f}. Per-scale ratios: "
             f"{', '.join(f'scale {k}: {v:.3f}' for k, v in _ratios.items())}. "
-            "Re-read the decision table in the spec — this case is between buckets."
+            "This case falls between the buckets above; inspect the per-scale "
+            "contribution ratios before deciding."
         )
     mo.md("### Verdict\n\n" + _verdict)
     return
