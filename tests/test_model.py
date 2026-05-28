@@ -326,6 +326,41 @@ def test_famsegnet_adds_exactly_the_fam_params() -> None:
     assert n(fam) - n(base) == fam_only
 
 
+def test_atomsegnet_param_counts_pinned() -> None:
+    """Pin AtomSegNet param counts (both arms). Equality so any accidental change to a
+    shared block (DoubleConv, BilinearUp, OutputConv) surfaces as a diff here."""
+    from spectrafan.models.atomsegnet import AtomSegNet
+
+    def n(m: torch.nn.Module) -> int:
+        return sum(p.numel() for p in m.parameters())
+
+    identity_arm = n(AtomSegNet(skip_transform="identity"))
+    fam_arm = n(AtomSegNet(skip_transform="fam_complex"))
+    assert identity_arm == 1741059, (
+        f"AtomSegNet (identity) param count changed: expected 1741059, got {identity_arm}. "
+        "If intentional, update the pinned value."
+    )
+    assert fam_arm == 1770179, (
+        f"FAMSegNet (fam_complex) param count changed: expected 1770179, got {fam_arm}. "
+        "If intentional, update the pinned value."
+    )
+
+
+def test_famsegnet_survives_autocast() -> None:
+    """FAMSegNet forward must run under autocast (E5 trains with AMP); the FAM escapes
+    autocast internally for the FFT, so the whole-model forward must not crash."""
+    from spectrafan.models.atomsegnet import AtomSegNet
+
+    torch.manual_seed(0)
+    model = AtomSegNet(skip_transform="fam_complex")
+    model.eval()
+    x = torch.randn(1, 3, 64, 64)
+    with torch.no_grad(), torch.amp.autocast(device_type="cpu", dtype=torch.bfloat16):
+        y = model(x)
+    assert y.shape == (1, 1, 64, 64)
+    assert torch.isfinite(y).all()
+
+
 def test_atomsegnet_head_emits_raw_logits_no_clamp() -> None:
     """The output head must contain no ReLU/Sigmoid: a trailing ReLU or Sigmoid would
     clamp sigmoid(output) to [0.5, 1.0], making confident background impossible. This

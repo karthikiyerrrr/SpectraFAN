@@ -55,6 +55,17 @@ def test_fanetmini_forward_shape():
     assert out.shape == (1, 1, 64, 64)
 
 
+def test_atomsegnet_famsegnet_build_and_forward():
+    data = DataConfig(in_channels=3)
+    for name in ("atomsegnet", "famsegnet"):
+        m = build_model(ModelConfig(name=name), data)
+        m.eval()
+        with torch.no_grad():
+            out = m(torch.randn(1, 3, 64, 64))
+        assert out.shape == (1, 1, 64, 64)
+        assert torch.isfinite(out).all()
+
+
 def test_identity_skip_transform_registered_and_passthrough():
     assert "identity" in SKIP_TRANSFORM_REGISTRY.keys()
     t = SKIP_TRANSFORM_REGISTRY.build("identity", channels=64, conv_kind="depthwise")

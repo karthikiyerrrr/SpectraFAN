@@ -6,7 +6,7 @@ from torch import nn
 
 from spectrafan.config import DataConfig, ModelConfig
 from spectrafan.models import (
-    atomsegnet as _atomsegnet,  # noqa: F401  (imports register architectures)
+    atomsegnet as _atomsegnet,  # noqa: F401  (imports register architectures; SKIP_TRANSFORM_REGISTRY.build is lazy, so order vs skip_transforms is safe)
 )
 from spectrafan.models import (
     fam as _fam,  # noqa: F401  (belt-and-suspenders: unet imports fam, but state the dependency)
