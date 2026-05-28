@@ -249,3 +249,82 @@ def test_fanetmini_accepts_in_channels_one() -> None:
         y = model(x)
     assert y.shape == (1, 1, 256, 256)
     assert torch.isfinite(y).all()
+
+
+def test_atomsegnet_forward_shape() -> None:
+    """AtomSegNet maps (B, 3, 256, 256) to (B, 1, 256, 256) logits."""
+    from spectrafan.models.atomsegnet import AtomSegNet
+
+    torch.manual_seed(0)
+    model = AtomSegNet()
+    model.eval()
+    x = torch.randn(1, 3, 256, 256)
+    with torch.no_grad():
+        y = model(x)
+    assert y.shape == (1, 1, 256, 256)
+    assert y.dtype == x.dtype
+    assert torch.isfinite(y).all()
+
+
+def test_atomsegnet_two_pools_reach_64px_bottleneck() -> None:
+    """Stem keeps 256, one down -> 128, bottleneck -> 64 at 256 channels (checked via direct stage calls, not forward)."""
+    from spectrafan.models.atomsegnet import AtomSegNet
+
+    model = AtomSegNet()
+    model.eval()
+    x = torch.randn(1, 3, 256, 256)
+    with torch.no_grad():
+        a = model.stem(x)
+        b = model.down(a)
+        h = model.bottleneck_module(b)
+    assert a.shape[-2:] == (256, 256)
+    assert b.shape[-2:] == (128, 128)
+    assert h.shape[-2:] == (64, 64)
+    assert h.shape[1] == 256
+
+
+def test_atomsegnet_identity_arm_has_no_fam() -> None:
+    """Default (identity) arm uses pass-through skips, not FAMs."""
+    from spectrafan.models.atomsegnet import AtomSegNet
+
+    model = AtomSegNet(skip_transform="identity")
+    assert len(model.skip_transforms) == 2
+    assert all(isinstance(t, torch.nn.Identity) for t in model.skip_transforms)
+
+
+def test_atomsegnet_fam_arm_has_two_fams_at_64_and_128() -> None:
+    """FAM arm puts a FAMComplex on each of the two skips (64 and 128 channels)."""
+    from spectrafan.models.atomsegnet import AtomSegNet
+    from spectrafan.models.fam import FAMComplex
+
+    model = AtomSegNet(skip_transform="fam_complex")
+    assert len(model.skip_transforms) == 2
+    assert all(isinstance(t, FAMComplex) for t in model.skip_transforms)
+    assert tuple(t.channels for t in model.skip_transforms) == (64, 128)
+
+
+def test_famsegnet_adds_exactly_the_fam_params() -> None:
+    """FAM arm exceeds identity arm by exactly the two FAMComplex modules' params."""
+    from spectrafan.models.atomsegnet import AtomSegNet
+    from spectrafan.models.fam import FAMComplex
+
+    def n(m: torch.nn.Module) -> int:
+        return sum(p.numel() for p in m.parameters())
+
+    base = AtomSegNet(skip_transform="identity")
+    fam = AtomSegNet(skip_transform="fam_complex")
+    fam_only = n(FAMComplex(64)) + n(FAMComplex(128))
+    assert n(fam) - n(base) == fam_only
+
+
+def test_atomsegnet_head_emits_raw_logits_no_clamp() -> None:
+    """The output head must contain no ReLU/Sigmoid: a trailing ReLU or Sigmoid would
+    clamp sigmoid(output) to [0.5, 1.0], making confident background impossible. This
+    is the structural guarantee behind using BCEWithLogitsLoss on the head's output."""
+    from spectrafan.models.atomsegnet import AtomSegNet
+
+    model = AtomSegNet()  # default output_norm="bn"
+    head_modules = list(model.out.modules())
+    assert not any(isinstance(m, (torch.nn.ReLU, torch.nn.Sigmoid)) for m in head_modules), (
+        "AtomSegNet output head must emit raw logits (no ReLU/Sigmoid before output)."
+    )
