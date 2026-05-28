@@ -223,6 +223,20 @@ def test_package_reexports_models() -> None:
     assert spectrafan.FANetMini is FANetMini_src
 
 
+def test_bilinearup_upsamples_and_concats_skip() -> None:
+    """BilinearUp doubles spatial size, halves channels via 1x1, concats skip, returns out_channels."""
+    from spectrafan.models.blocks import BilinearUp
+
+    torch.manual_seed(0)
+    block = BilinearUp(in_channels=256, out_channels=128)
+    block.eval()
+    x = torch.randn(2, 256, 16, 16)
+    skip = torch.randn(2, 128, 32, 32)
+    y = block(x, skip)
+    assert y.shape == (2, 128, 32, 32)
+    assert torch.isfinite(y).all()
+
+
 def test_fanetmini_accepts_in_channels_one() -> None:
     """FANetMini builds with in_channels=1 and forward-passes (1, 1, 256, 256) inputs."""
     from spectrafan.models.unet import FANetMini
