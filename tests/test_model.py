@@ -251,6 +251,15 @@ def test_fanetmini_accepts_in_channels_one() -> None:
     assert torch.isfinite(y).all()
 
 
+def test_package_reexports_atomsegnet() -> None:
+    """`from spectrafan import AtomSegNet` must work for users."""
+    import spectrafan
+    from spectrafan.models.atomsegnet import AtomSegNet as AtomSegNet_src
+
+    assert hasattr(spectrafan, "AtomSegNet")
+    assert spectrafan.AtomSegNet is AtomSegNet_src
+
+
 def test_atomsegnet_forward_shape() -> None:
     """AtomSegNet maps (B, 3, 256, 256) to (B, 1, 256, 256) logits."""
     from spectrafan.models.atomsegnet import AtomSegNet

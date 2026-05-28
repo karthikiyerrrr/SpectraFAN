@@ -4,6 +4,7 @@ from spectrafan.config import RunConfig, load_config
 from spectrafan.models import (
     MODEL_REGISTRY,
     SKIP_TRANSFORM_REGISTRY,
+    AtomSegNet,
     FAMComplex,
     FANet,
     FANetMini,
@@ -14,6 +15,7 @@ from spectrafan.training.train import fit
 __version__ = "0.0.1"
 
 __all__ = [
+    "AtomSegNet",
     "FAMComplex",
     "FANet",
     "FANetMini",

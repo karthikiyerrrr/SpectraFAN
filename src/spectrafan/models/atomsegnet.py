@@ -72,3 +72,29 @@ class AtomSegNet(nn.Module):
         h = self.up1(h, b_f)  # 128, /2
         h = self.up2(h, a_f)  # 64, full
         return self.out(h)
+
+
+# Architecture registration (kept at end to avoid an import cycle via the package __init__).
+from spectrafan.config import DataConfig, ModelConfig  # noqa: E402
+from spectrafan.models._registries import MODEL_REGISTRY  # noqa: E402
+
+
+@MODEL_REGISTRY.register("atomsegnet")
+def _build_atomsegnet(model_cfg: ModelConfig, data_cfg: DataConfig) -> nn.Module:
+    # No-FAM arm: skip transform fixed to identity regardless of config default.
+    return AtomSegNet(
+        in_channels=data_cfg.in_channels,
+        skip_transform="identity",
+        output_norm=model_cfg.output_norm,
+    )
+
+
+@MODEL_REGISTRY.register("famsegnet")
+def _build_famsegnet(model_cfg: ModelConfig, data_cfg: DataConfig) -> nn.Module:
+    # FAM arm: FAMComplex on each skip.
+    return AtomSegNet(
+        in_channels=data_cfg.in_channels,
+        conv_kind=model_cfg.fam_conv_kind,
+        skip_transform="fam_complex",
+        output_norm=model_cfg.output_norm,
+    )

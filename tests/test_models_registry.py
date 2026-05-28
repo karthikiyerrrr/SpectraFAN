@@ -14,8 +14,21 @@ def test_skip_transform_registered():
     assert "fam_complex" in SKIP_TRANSFORM_REGISTRY.keys()
 
 
-def test_model_registry_has_both():
-    assert set(MODEL_REGISTRY.keys()) == {"fanet", "fanetmini"}
+def test_model_registry_has_all_four():
+    assert set(MODEL_REGISTRY.keys()) == {"fanet", "fanetmini", "atomsegnet", "famsegnet"}
+
+
+def test_build_model_dispatches_atomsegnet_and_famsegnet():
+    from spectrafan.models.atomsegnet import AtomSegNet
+    from spectrafan.models.fam import FAMComplex
+
+    data = DataConfig(in_channels=3)
+    atom = build_model(ModelConfig(name="atomsegnet"), data)
+    fam = build_model(ModelConfig(name="famsegnet"), data)
+    assert isinstance(atom, AtomSegNet) and isinstance(fam, AtomSegNet)
+    # FAM presence is fixed by the model name, regardless of ModelConfig.skip_transform default.
+    assert not any(isinstance(t, FAMComplex) for t in atom.skip_transforms)
+    assert all(isinstance(t, FAMComplex) for t in fam.skip_transforms)
 
 
 def test_build_model_dispatches():
