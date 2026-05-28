@@ -504,6 +504,120 @@ def test_cli_backward_flag_emits_bwd_rows(tmp_path: Path) -> None:
     assert bwd.filter(pl.col("category") == "total_bwd").height == 1
 
 
+def test_profile_one_config_eval_mode_produces_fwd_rows() -> None:
+    """eval_mode runs the forward under no_grad and still emits fwd rows."""
+    df = profile_one_config(
+        image_size=32,
+        batch_size=1,
+        channels=(8, 16),
+        bottleneck=32,
+        fam_conv_kind="depthwise",
+        warmup_iters=1,
+        measure_iters=2,
+        device=torch.device("cpu"),
+        seed=0,
+        include_backward=False,
+        eval_mode=True,
+    )
+    assert df["pass"].unique().to_list() == ["fwd"]
+    assert set(df["category"].unique()) <= EXPECTED_CATEGORIES_FWD
+
+
+def test_profile_one_config_eval_and_backward_raises() -> None:
+    """Backward needs grad; combining it with eval_mode is rejected up front."""
+    with pytest.raises(ValueError, match="eval_mode"):
+        profile_one_config(
+            image_size=32,
+            batch_size=1,
+            channels=(8, 16),
+            bottleneck=32,
+            fam_conv_kind="depthwise",
+            warmup_iters=1,
+            measure_iters=2,
+            device=torch.device("cpu"),
+            seed=0,
+            include_backward=True,
+            eval_mode=True,
+        )
+
+
+def test_load_profile_fanetmini_config_resolves_name() -> None:
+    cfg = load_profile_config(Path("configs/profile_fanetmini.yaml"))
+    assert cfg.model.name == "fanetmini"
+
+
+def test_cli_eval_resolves_mini_dims_and_marks_mode(tmp_path: Path) -> None:
+    """--eval against a fanetmini-named config builds the 3-FAM Mini model and
+    records mode=eval in the summary."""
+    repo_root = Path(__file__).resolve().parents[1]
+    cfg = tmp_path / "mini_profile.yaml"
+    cfg.write_text(
+        f"""
+extends: {(repo_root / "configs" / "fanetmini_adapted.yaml").resolve()}
+
+profile:
+  warmup_iters: 1
+  measure_iters: 2
+  include_chrome_trace: false
+  configs:
+    - image_size: 32
+      batch_size: 1
+"""
+    )
+    out_dir = tmp_path / "out_eval"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "spectrafan.analysis.profile",
+            "--config",
+            str(cfg),
+            "--output",
+            str(out_dir),
+            "--device",
+            "cpu",
+            "--eval",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=repo_root,
+    )
+
+    assert result.returncode == 0, f"stderr: {result.stderr}\nstdout: {result.stdout}"
+    df = pl.read_parquet(out_dir / "timings.parquet")
+    assert df["pass"].unique().to_list() == ["fwd"]
+    # FANetMini has three skips => three FAMs, regardless of the (ignored) config channels.
+    assert df.filter(pl.col("category") == "fam").height == 3
+    summary = json.loads((out_dir / "summary.json").read_text())
+    assert summary["mode"] == "eval"
+
+
+def test_cli_eval_and_backward_flags_conflict(tmp_path: Path) -> None:
+    """Passing both --eval and --backward fails fast with a nonzero exit."""
+    repo_root = Path(__file__).resolve().parents[1]
+    cfg = _write_smoke_config(tmp_path, repo_root)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "spectrafan.analysis.profile",
+            "--config",
+            str(cfg),
+            "--output",
+            str(tmp_path / "out_conflict"),
+            "--device",
+            "cpu",
+            "--eval",
+            "--backward",
+        ],
+        capture_output=True,
+        text=True,
+        cwd=repo_root,
+    )
+    assert result.returncode != 0
+
+
 def test_compute_summary_breakdown_when_branches_dominate() -> None:
     """Branches dominate FAM time — verify the percentage breakdown."""
     df = pl.DataFrame(

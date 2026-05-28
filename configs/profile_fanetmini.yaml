@@ -1,0 +1,18 @@
+# Inference profiling sweep for the adapted FANetMini recipe.
+# Run with --eval to profile inference (model.eval() + no_grad). The harness
+# resolves the architecture from model.name (fanetmini), so its widths come
+# from the class, not the inherited config channels.
+#
+#     uv run spectrafan-profile --config configs/profile_fanetmini.yaml --eval
+
+extends: fanetmini_adapted.yaml
+
+profile:
+  warmup_iters: 20
+  measure_iters: 100
+  include_chrome_trace: true
+  configs:
+    - image_size: 256
+      batch_size: 1
+    - image_size: 256
+      batch_size: 16

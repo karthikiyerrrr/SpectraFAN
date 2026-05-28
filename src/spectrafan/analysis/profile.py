@@ -14,6 +14,7 @@ CLI:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import platform
 import socket
@@ -29,8 +30,9 @@ import polars as pl
 import torch
 from torch import nn
 
-from spectrafan.config import ProfileConfig, load_profile_config
+from spectrafan.config import DataConfig, ProfileConfig, load_profile_config
 from spectrafan.manifest import write_manifest
+from spectrafan.models import build_model
 from spectrafan.models.fam import ConvKind, FAMComplex
 from spectrafan.models.unet import FANet
 from spectrafan.training.train import resolve_device
@@ -189,6 +191,7 @@ def profile_one_config(
     device: torch.device,
     seed: int,
     include_backward: bool,
+    eval_mode: bool = False,
 ) -> pl.DataFrame:
     """Profile one (image_size, batch_size) configuration.
 
@@ -198,11 +201,18 @@ def profile_one_config(
     (category, module_path). When ``include_backward=True``, also emits a
     single ``total_bwd`` row.
 
+    When ``eval_mode=True`` the model runs in ``eval()`` with the forward passes
+    wrapped in ``torch.no_grad()`` (inference profiling). Backward is incompatible
+    with eval mode and raises.
+
     The ``encoder`` category includes the stem, all encoder blocks, AND the
     bottleneck module (treated as an opaque non-FAM block per the design).
     The ``other`` category is the residual ``total_fwd - fams_total - encoder
     - decoder - head`` and can go slightly negative on noisy CPUs.
     """
+    if eval_mode and include_backward:
+        raise ValueError("eval_mode profiles inference; it cannot run with include_backward")
+
     torch.manual_seed(seed)
     model = FANet(
         in_channels=3,
@@ -210,7 +220,8 @@ def profile_one_config(
         bottleneck=bottleneck,
         conv_kind=fam_conv_kind,
     ).to(device)
-    model.train()
+    model.eval() if eval_mode else model.train()
+    grad_ctx = torch.no_grad if eval_mode else contextlib.nullcontext
 
     # Spatial resolution at each skip (stem keeps input HW; each encoder halves it).
     skip_hw = [image_size]
@@ -237,7 +248,8 @@ def profile_one_config(
         for _ in range(warmup_iters):
             if device.type == "cuda":
                 torch.cuda.synchronize()
-            _ = model(x)
+            with grad_ctx():
+                _ = model(x)
             for k in block_samples:
                 block_samples[k].clear()
             for fam in profiled_fams:
@@ -251,7 +263,7 @@ def profile_one_config(
                 x_iter = x.clone().requires_grad_(True)
             else:
                 x_iter = x
-            with Timer(device) as t_total:
+            with Timer(device) as t_total, grad_ctx():
                 out = model(x_iter)
             total_fwd_samples.append(t_total.elapsed_us)
 
@@ -439,25 +451,22 @@ def _maybe_capture_chrome_trace(
     cfg: ProfileConfig,
     out_dir: Path,
     device: torch.device,
+    eval_mode: bool = False,
 ) -> None:
     if not cfg.profile.include_chrome_trace or not cfg.profile.configs:
         return
     entry = cfg.profile.configs[0]  # smallest config
 
     torch.manual_seed(0)
-    model = FANet(
-        in_channels=3,
-        channels=tuple(cfg.model.channels),
-        bottleneck=cfg.model.bottleneck,
-        conv_kind=cfg.model.fam_conv_kind,
-    ).to(device)
-    model.train()
+    model = build_model(cfg.model, DataConfig()).to(device)
+    model.eval() if eval_mode else model.train()
+    grad_ctx = torch.no_grad if eval_mode else contextlib.nullcontext
     x = torch.randn(entry.batch_size, 3, entry.image_size, entry.image_size, device=device)
 
     activities = [torch.profiler.ProfilerActivity.CPU]
     if device.type == "cuda":
         activities.append(torch.profiler.ProfilerActivity.CUDA)
-    with torch.profiler.profile(activities=activities, record_shapes=False) as prof:
+    with torch.profiler.profile(activities=activities, record_shapes=False) as prof, grad_ctx():
         _ = model(x)
         if device.type == "cuda":
             torch.cuda.synchronize()
@@ -469,13 +478,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--output", type=Path, default=None)
     parser.add_argument("--backward", action="store_true")
+    parser.add_argument(
+        "--eval",
+        dest="eval_mode",
+        action="store_true",
+        help="Profile inference: model.eval() + no_grad forward (incompatible with --backward).",
+    )
     parser.add_argument("--device", default="auto")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--override", action="append", default=[])
     args = parser.parse_args(argv)
+    if args.eval_mode and args.backward:
+        parser.error("--eval and --backward are mutually exclusive (inference has no backward)")
 
     cfg = load_profile_config(args.config, overrides=args.override)
     device = resolve_device(args.device)
+
+    # Resolve actual model dims from the named architecture (e.g. fanetmini hardcodes
+    # its widths and ignores config channels), so the breakdown labels match reality.
+    probe = build_model(cfg.model, DataConfig())
+    assert isinstance(probe, FANet), f"profiling expects a FANet-family model, got {type(probe)}"
+    resolved_channels = tuple(probe.channels)
+    resolved_bottleneck = probe.bottleneck
 
     if args.output is None:
         ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
@@ -507,14 +531,15 @@ def main(argv: list[str] | None = None) -> int:
         df = profile_one_config(
             image_size=entry.image_size,
             batch_size=entry.batch_size,
-            channels=tuple(cfg.model.channels),
-            bottleneck=cfg.model.bottleneck,
+            channels=resolved_channels,
+            bottleneck=resolved_bottleneck,
             fam_conv_kind=cfg.model.fam_conv_kind,
             warmup_iters=cfg.profile.warmup_iters,
             measure_iters=cfg.profile.measure_iters,
             device=device,
             seed=args.seed,
             include_backward=args.backward,
+            eval_mode=args.eval_mode,
         )
         frames.append(df)
 
@@ -522,6 +547,7 @@ def main(argv: list[str] | None = None) -> int:
     timings.write_parquet(out_dir / "timings.parquet")
 
     summary = compute_summary(timings)
+    summary["mode"] = "eval" if args.eval_mode else "train"
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
 
     _summary = json.loads((out_dir / "summary.json").read_text())
@@ -535,7 +561,7 @@ def main(argv: list[str] | None = None) -> int:
         },
     )
 
-    _maybe_capture_chrome_trace(cfg, out_dir, device)
+    _maybe_capture_chrome_trace(cfg, out_dir, device, eval_mode=args.eval_mode)
 
     print(f"[profile] wrote {out_dir}", flush=True)
     print(
