@@ -1,24 +1,9 @@
-# Adapted-track recipe for TEMImageNet (FANetMini at 256x256).
-# AdamW + cosine schedule + warmup, batch size 16, 200 epochs. This recipe
-# broke the ~0.82 val_iou plateau the earlier single-knob experiments hit,
-# reaching test_iou ~0.845. Earlier experiment variants are in configs/archive/.
+# Adapted-track recipe applied to FANetMini (3-scale, TEMImageNet-sized).
+# Recipe lives in adapted_recipe.yaml; this file only selects the model.
 
-extends: fanetmini.yaml
+extends: adapted_recipe.yaml
 
-data:
-  batch_size: 16
-  num_workers: 8
-
-optim:
-  optimizer: adamw
-  lr: 1.0e-3
-  weight_decay: 1.0e-4
-  betas: [0.9, 0.999]
-  schedule: cosine
-  warmup_epochs: 5
-  min_lr: 1.0e-5
-
-train:
-  epochs: 200
-  amp: true
-  checkpoint_every: 25
+model:
+  name: fanetmini
+  # channels and bottleneck are ignored when name == fanetmini (the class
+  # hardcodes them); omitted rather than left in as misleading.

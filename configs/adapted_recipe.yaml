@@ -1,0 +1,24 @@
+# Adapted-track recipe for TEMImageNet at 256x256 (the "E5" recipe).
+# AdamW + cosine schedule + warmup, batch size 16, 200 epochs, AMP. This recipe
+# broke the ~0.82 val_iou plateau and reached test_iou ~0.845. Model-agnostic:
+# extended by fanetmini_adapted, atomsegnet, and famsegnet.
+
+extends: default.yaml
+
+data:
+  batch_size: 16
+  num_workers: 8
+
+optim:
+  optimizer: adamw
+  lr: 1.0e-3
+  weight_decay: 1.0e-4
+  betas: [0.9, 0.999]
+  schedule: cosine
+  warmup_epochs: 5
+  min_lr: 1.0e-5
+
+train:
+  epochs: 200
+  amp: true
+  checkpoint_every: 25

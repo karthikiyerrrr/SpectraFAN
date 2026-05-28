@@ -137,3 +137,21 @@ def test_profile_config_loads():
     cfg = load_profile_config(cfg_dir / "profile.yaml")
     assert cfg.profile.measure_iters == 100
     assert len(cfg.profile.configs) == 2
+
+
+def test_fanetmini_adapted_resolves_to_e5_recipe():
+    """fanetmini_adapted must keep the E5 recipe after the recipe-base refactor."""
+    from spectrafan.config import load_config
+
+    cfg_dir = Path(__file__).resolve().parents[1] / "configs"
+    cfg = load_config(cfg_dir / "fanetmini_adapted.yaml")
+    assert cfg.model.name == "fanetmini"
+    assert cfg.data.batch_size == 16
+    assert cfg.optim.optimizer == "adamw"
+    assert cfg.optim.schedule == "cosine"
+    assert cfg.optim.lr == pytest.approx(1e-3)
+    assert cfg.optim.warmup_epochs == 5
+    assert cfg.optim.weight_decay == pytest.approx(1e-4)
+    assert cfg.optim.min_lr == pytest.approx(1e-5)
+    assert cfg.train.epochs == 200
+    assert cfg.train.amp is True
