@@ -125,7 +125,9 @@ def _(pl, runs: dict[str, dict]):
                 "final_train_iou": None,
                 "final_gap": None,
                 "mean_wall_sec": None,
-                "test_iou": headline.get("test_iou") or test.get("test_iou"),
+                "test_iou": headline.get("test_iou")
+                if "test_iou" in headline
+                else test.get("test_iou"),
             }
 
         last10 = df.tail(10)
